@@ -105,7 +105,7 @@ class _LockScreenState extends State<LockScreen> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: List.generate(
-                  6,
+                  4,
                   (i) => Container(
                     width: 13,
                     height: 13,

@@ -11,6 +11,7 @@ class SecurityService {
   static const _hashKey = 'security.pinHash';
   static const _saltKey = 'security.pinSalt';
   Future<bool> get enabled async => await _storage.read(key: _hashKey) != null;
+
   Future<void> setPin(String pin) async {
     if (!RegExp(r'^\d{4,12}$').hasMatch(pin)) {
       throw ArgumentError('PIN must contain 4–12 digits.');

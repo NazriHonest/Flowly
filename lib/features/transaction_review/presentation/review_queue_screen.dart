@@ -7,14 +7,17 @@ import '../../../core/formatters/money_formatter.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/presentation/transaction_form_screen.dart';
 import '../../transactions/providers/transaction_provider.dart';
+import '../../transactions/providers/transfer_candidate_provider.dart';
+import 'possible_transfers_screen.dart';
 
 class ReviewQueueScreen extends ConsumerWidget {
   const ReviewQueueScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(transactionListProvider);
+    final possibleTransfers = ref.watch(transferCandidateListProvider).valueOrNull ?? const [];
     return Scaffold(
-      appBar: AppBar(title: const Text('Needs review')),
+      appBar: AppBar(title: const Text('Review')),
       body: state.when(
         loading: () => const AppLoadingList(),
         error: (error, _) => AppErrorState(
@@ -26,7 +29,7 @@ class ReviewQueueScreen extends ConsumerWidget {
           final review = items
               .where((item) => item.status == ReviewStatus.needsReview)
               .toList();
-          if (review.isEmpty) {
+          if (review.isEmpty && possibleTransfers.isEmpty) {
             return const AppEmptyState(
               icon: Icons.task_alt_rounded,
               title: 'You’re all caught up',
@@ -37,6 +40,13 @@ class ReviewQueueScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
+              if (possibleTransfers.isNotEmpty) Card(child: ListTile(
+                leading: const Icon(Icons.compare_arrows_rounded),
+                title: const Text('Possible transfers'),
+                subtitle: Text('${possibleTransfers.length} movement${possibleTransfers.length == 1 ? '' : 's'} between your accounts need review.'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PossibleTransfersScreen())),
+              )),
               Container(
                 padding: const EdgeInsets.all(14),
                 margin: const EdgeInsets.only(bottom: 14),

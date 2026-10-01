@@ -2,6 +2,7 @@ import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart' hide Transaction;
 
 import 'dart:convert';
+import 'dart:developer' as developer;
 
 import '../../features/accounts/domain/entities/account.dart';
 import '../../features/budgets/domain/entities/budget.dart';
@@ -12,16 +13,21 @@ import '../../features/recurring/domain/entities/recurring_transaction.dart';
 import '../../features/notifications/domain/entities/app_notification.dart';
 import '../../features/sms_detection/domain/entities/sms_provider.dart';
 import '../../features/transactions/domain/entities/transaction.dart';
+import '../../features/transactions/domain/entities/transfer_candidate.dart';
+import '../../features/transactions/domain/services/transfer_reconciliation_service.dart';
 import 'migrations/migration_runner.dart';
 
 class AppDatabase {
-  AppDatabase._();
+  AppDatabase._({this.databasePathOverride});
   static final instance = AppDatabase._();
+  factory AppDatabase.forTesting(String databasePath) =>
+      AppDatabase._(databasePathOverride: databasePath);
+  final String? databasePathOverride;
   final _migrations = const MigrationRunner();
   Database? _database;
 
   Future<String> get databasePath async =>
-      join(await getDatabasesPath(), 'flowly.db');
+      databasePathOverride ?? join(await getDatabasesPath(), 'flowly.db');
 
   /// Closes the current handle so a validated restore can safely replace it.
   Future<void> reopen() async {
@@ -36,8 +42,8 @@ class AppDatabase {
   }
 
   Future<Database> get db async => _database ??= await openDatabase(
-    join(await getDatabasesPath(), 'flowly.db'),
-    version: 15,
+    await databasePath,
+    version: 16,
     onConfigure: (database) => database.execute('PRAGMA foreign_keys = ON'),
     onCreate: (database, _) => _migrations.create(database),
     onUpgrade: (database, oldVersion, _) =>
@@ -206,7 +212,7 @@ class AppDatabase {
     String fingerprint,
   ) async {
     final database = await db;
-    return database.transaction((txn) async {
+    final saved = await database.transaction((txn) async {
       final count =
           Sqflite.firstIntValue(
             await txn.rawQuery(
@@ -240,6 +246,102 @@ class AppDatabase {
       });
       return true;
     });
+    if (saved) {
+      final row = (await database.query(
+        'transaction_fingerprints',
+        columns: ['transaction_id'],
+        where: 'fingerprint=?',
+        whereArgs: [fingerprint],
+      )).firstOrNull;
+      try {
+        await reconcileDetectedTransaction(row?['transaction_id'] as int?);
+      } catch (error, stack) {
+        // Saving the normalized financial record is primary. Reconciliation
+        // can be retried later and must never discard a successfully saved SMS.
+        developer.log(
+          'Transfer reconciliation deferred after persistence.',
+          name: 'flowly.reconciliation',
+          error: error,
+          stackTrace: stack,
+        );
+      }
+    }
+    return saved;
+  }
+
+  /// Evaluates a newly persisted SMS record without ever using amount alone.
+  /// Strong, unique matches additionally require both accounts to have an
+  /// explicit provider mapping; all other compatible evidence is retained as
+  /// a possible transfer for the user to inspect after restart.
+  Future<void> reconcileDetectedTransaction(int? transactionId) async {
+    if (transactionId == null) return;
+    final database = await db;
+    final rows = await database.query('transactions');
+    final items = rows.map(_transaction).toList();
+    final seed = items.where((item) => item.id == transactionId).firstOrNull;
+    if (seed == null ||
+        (seed.source != TransactionSource.smsLive &&
+            seed.source != TransactionSource.smsImport) ||
+        seed.status != ReviewStatus.confirmed) {
+      return;
+    }
+    final ownedAccounts = await accounts();
+    final currencies = {
+      for (final account in ownedAccounts) account.id!: account.currency,
+    };
+    final mappings = await providerAccountMappings();
+    final mappedAccounts = mappings.map((mapping) => mapping.accountId).toSet();
+    final service = TransferReconciliationService();
+    final outgoing = seed.type == TransactionType.expense
+        ? seed
+        : null;
+    final matches = outgoing == null
+        ? items.where((item) => item.type == TransactionType.expense).expand(
+            (item) => service.candidatesFor(
+              outgoing: item,
+              transactions: [seed],
+              outgoingCurrency: currencies[item.accountId] ?? '',
+              currencyForAccount: (id) => currencies[id] ?? '',
+            ),
+          ).toList()
+        : service.candidatesFor(
+            outgoing: outgoing,
+            transactions: items,
+            outgoingCurrency: currencies[outgoing.accountId] ?? '',
+            currencyForAccount: (id) => currencies[id] ?? '',
+          );
+    final relevant = matches.where(
+      (match) => match.outgoing.id == transactionId || match.incoming.id == transactionId,
+    ).toList();
+    final strong = relevant.where((match) => match.confidence == TransferMatchConfidence.strong).toList();
+    final providerMapped = strong.where(
+      (match) => mappedAccounts.contains(match.outgoing.accountId) &&
+          mappedAccounts.contains(match.incoming.accountId),
+    ).toList();
+    if (providerMapped.length == 1) {
+      final match = providerMapped.single;
+      await database.insert('transfer_candidates', {
+        'outgoing_transaction_id': match.outgoing.id,
+        'incoming_transaction_id': match.incoming.id,
+        'confidence': match.confidence.name,
+        'status': TransferCandidateStatus.possible.name,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      await linkTransfer(
+        outgoingTransactionId: match.outgoing.id!,
+        incomingTransactionId: match.incoming.id!,
+      );
+      return;
+    }
+    for (final match in relevant) {
+      await database.insert('transfer_candidates', {
+        'outgoing_transaction_id': match.outgoing.id,
+        'incoming_transaction_id': match.incoming.id,
+        'confidence': match.confidence.name,
+        'status': 'possible',
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
   }
 
   Future<bool> hasFingerprint(String fingerprint) async =>
@@ -317,6 +419,15 @@ class AppDatabase {
         where: 'id=?',
         whereArgs: [incomingTransactionId],
       );
+      await txn.update(
+        'transfer_candidates',
+        {
+          'status': TransferCandidateStatus.linked.name,
+          'resolved_at': DateTime.now().toUtc().toIso8601String(),
+        },
+        where: '(outgoing_transaction_id=? AND incoming_transaction_id=?) OR (outgoing_transaction_id=? OR incoming_transaction_id=? OR outgoing_transaction_id=? OR incoming_transaction_id=?)',
+        whereArgs: [outgoingTransactionId, incomingTransactionId, outgoingTransactionId, outgoingTransactionId, incomingTransactionId, incomingTransactionId],
+      );
     });
   }
 
@@ -327,8 +438,48 @@ class AppDatabase {
               [transactionId],
             ),
           ) ??
-          0) >
+      0) >
       0;
+
+  Future<List<TransferCandidate>> transferCandidates() async {
+    final database = await db;
+    final rows = await database.query(
+      'transfer_candidates',
+      where: 'status=?',
+      whereArgs: [TransferCandidateStatus.possible.name],
+      orderBy: 'created_at DESC',
+    );
+    final all = {for (final item in await transactions()) item.id!: item};
+    return rows
+        .map((row) {
+          final outgoing = all[row['outgoing_transaction_id'] as int];
+          final incoming = all[row['incoming_transaction_id'] as int];
+          if (outgoing == null || incoming == null) return null;
+          return TransferCandidate(
+            id: row['id'] as int,
+            outgoing: outgoing,
+            incoming: incoming,
+            confidence: row['confidence'] as String,
+            status: TransferCandidateStatus.values.byName(row['status'] as String),
+            createdAt: DateTime.parse(row['created_at'] as String),
+            resolvedAt: DateTime.tryParse(row['resolved_at'] as String? ?? ''),
+          );
+        })
+        .whereType<TransferCandidate>()
+        .toList();
+  }
+
+  Future<void> rejectTransferCandidate(int candidateId) async {
+    await (await db).update(
+      'transfer_candidates',
+      {
+        'status': TransferCandidateStatus.rejected.name,
+        'resolved_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      where: 'id=? AND status=?',
+      whereArgs: [candidateId, TransferCandidateStatus.possible.name],
+    );
+  }
 
   Future<void> unlinkTransfer(int outgoingTransactionId) async {
     final database = await db;
@@ -358,6 +509,12 @@ class AppDatabase {
         'transfer_reconciliations',
         where: 'outgoing_transaction_id=?',
         whereArgs: [outgoingTransactionId],
+      );
+      await txn.update(
+        'transfer_candidates',
+        {'status': TransferCandidateStatus.possible.name, 'resolved_at': null},
+        where: 'outgoing_transaction_id=? OR incoming_transaction_id=?',
+        whereArgs: [outgoingTransactionId, outgoingTransactionId],
       );
     });
   }
