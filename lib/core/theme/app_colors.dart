@@ -1,0 +1,48 @@
+import 'package:flutter/material.dart';
+
+abstract final class AppColors {
+  static const primary = Color(0xFF079669),
+      primaryDark = Color(0xFF047857),
+      primaryLight = Color(0xFF36B88B),
+      secondary = Color(0xFF14B8A6),
+      income = Color(0xFF16A34A),
+      expense = Color(0xFFDC2626),
+      transfer = Color(0xFF0284C7),
+      warning = Color(0xFFF59E0B),
+      info = Color(0xFF0284C7),
+      lightTextPrimary = Color(0xFF14201E),
+      lightTextSecondary = Color(0xFF64706D),
+      darkTextPrimary = Color(0xFFF2F7F5),
+      darkTextSecondary = Color(0xFF9EB0AC),
+      lightBorder = Color(0xFFDDE7E4),
+      darkBorder = Color(0xFF28403B),
+      incomeSoft = Color(0xFFDCFCE7),
+      expenseSoft = Color(0xFFFEE2E2),
+      warningSoft = Color(0xFFFFF4D6),
+      infoSoft = Color(0xFFE0F2FE),
+      onPrimary = Color(0xFFFFFFFF),
+      heroTextMuted = Color(0xB3FFFFFF),
+      heroDivider = Color(0x3DFFFFFF),
+      heroIncome = Color(0xFFB8F6DC),
+      heroExpense = Color(0xFFFFD0C9),
+      lightBackground = Color(0xFFF5F8F7),
+      lightSurface = Color(0xFFFFFFFF),
+      lightMuted = Color(0xFFEEF4F2),
+      lightElevated = Color(0xFFEEF4F2),
+      darkBackground = Color(0xFF081412),
+      darkSurface = Color(0xFF10211F),
+      darkMuted = Color(0xFF18302C),
+      darkElevated = Color(0xFF18302C);
+
+  static const identityPalette = <Color>[
+    primary,
+    income,
+    transfer,
+    warning,
+    expense,
+    Color(0xFF8B5CF6),
+    Color(0xFFEC4899),
+    Color(0xFFF97316),
+    Color(0xFF64748B),
+  ];
+}
