@@ -5,10 +5,12 @@ import '../../../core/formatters/money_formatter.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../accounts/providers/account_provider.dart';
+import '../../accounts/domain/services/account_balance_calculator.dart';
 import '../../budgets/providers/budget_provider.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/providers/transaction_provider.dart';
 import '../../transactions/presentation/transaction_details_screen.dart';
+import '../../transactions/presentation/transaction_presentation.dart';
 import '../../transactions/presentation/transactions_screen.dart';
 import '../../transactions/presentation/widgets/transaction_card.dart';
 
@@ -61,22 +63,27 @@ class DashboardScreen extends ConsumerWidget {
               .where((item) => item.status == ReviewStatus.confirmed)
               .toList();
 
-          final income = _sum(confirmed, TransactionType.income);
-          final expenses = _sum(confirmed, TransactionType.expense);
+          final now = DateTime.now();
+          final monthStart = DateTime(now.year, now.month);
+          final nextMonthStart = DateTime(now.year, now.month + 1);
+          final monthly = confirmed
+              .where(
+                (item) =>
+                    !item.date.isBefore(monthStart) &&
+                    item.date.isBefore(nextMonthStart),
+              )
+              .toList();
+          final income = _sum(monthly, TransactionType.income);
+          final expenses = _sum(monthly, TransactionType.expense);
 
           final balance = accounts.fold<int>(
             0,
             (total, account) =>
-                total +
-                _accountBalance(
-                  account.id,
-                  account.openingBalanceMinor,
-                  confirmed,
-                ),
+                total + AccountBalanceCalculator.current(account, items),
           );
 
           final categories = <String, int>{};
-          for (final item in confirmed.where(
+          for (final item in monthly.where(
             (item) => item.type == TransactionType.expense,
           )) {
             categories[item.category] =
@@ -89,6 +96,10 @@ class DashboardScreen extends ConsumerWidget {
           final reviewCount = items
               .where((item) => item.status == ReviewStatus.needsReview)
               .length;
+          final recentTransactions = items
+              .where((item) => item.status != ReviewStatus.ignored)
+              .toList()
+            ..sort(compareTransactionsByCreatedAtDescending);
 
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
@@ -173,15 +184,14 @@ class DashboardScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              if (items.isEmpty)
+              if (recentTransactions.isEmpty)
                 const _InlineEmpty(
                   icon: Icons.receipt_long_outlined,
                   message: 'No transactions yet. Add your first transaction to start tracking.',
                 )
               else
                 Column(
-                  children: items
-                      .where((item) => item.status != ReviewStatus.ignored)
+                  children: recentTransactions
                       .take(5)
                       .map(
                         (item) => TransactionCard(
@@ -202,40 +212,6 @@ class DashboardScreen extends ConsumerWidget {
       ),
     );
   }
-}
-
-int _accountBalance(
-  int? id,
-  int openingBalance,
-  List<Transaction> transactions,
-) {
-  final income = transactions
-      .where(
-        (item) => item.accountId == id && item.type == TransactionType.income,
-      )
-      .fold<int>(0, (sum, item) => sum + item.amountMinor);
-
-  final expenses = transactions
-      .where(
-        (item) => item.accountId == id && item.type == TransactionType.expense,
-      )
-      .fold<int>(0, (sum, item) => sum + item.amountMinor);
-
-  final outgoing = transactions
-      .where(
-        (item) => item.accountId == id && item.type == TransactionType.transfer,
-      )
-      .fold<int>(0, (sum, item) => sum + item.amountMinor);
-
-  final incoming = transactions
-      .where(
-        (item) =>
-            item.destinationAccountId == id &&
-            item.type == TransactionType.transfer,
-      )
-      .fold<int>(0, (sum, item) => sum + item.amountMinor);
-
-  return openingBalance + income - expenses - outgoing + incoming;
 }
 
 int _sum(List<Transaction> transactions, TransactionType type) => transactions

@@ -1,35 +1,166 @@
+import 'dart:developer' as developer;
+
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter/services.dart';
+
+import '../data/sms_permission_bridge.dart';
 
 const automaticDetectionEnabledKey = 'automaticDetectionEnabled';
 const _nativeChannel = MethodChannel('com.flowly/sms_permissions');
 
-class AutomaticDetectionController extends StateNotifier<bool> {
-  AutomaticDetectionController() : super(false) {
-    _load();
+abstract interface class AutomaticDetectionStore {
+  Future<bool> readEnabled();
+  Future<bool> writeEnabled(bool enabled);
+}
+
+class SharedPreferencesAutomaticDetectionStore
+    implements AutomaticDetectionStore {
+  const SharedPreferencesAutomaticDetectionStore();
+
+  @override
+  Future<bool> readEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(automaticDetectionEnabledKey) ?? false;
   }
 
-  Future<void> _load() async {
+  @override
+  Future<bool> writeEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
-    state = prefs.getBool(automaticDetectionEnabledKey) ?? false;
-    try {
-      await _nativeChannel.invokeMethod<void>('setAutomaticDetection', state);
-    } on PlatformException {
-      // The Android receiver still defaults to disabled if the bridge is unavailable.
-    }
-  }
-
-  Future<void> setEnabled(bool enabled) async {
-    state = enabled;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(automaticDetectionEnabledKey, enabled);
-    try {
-      await _nativeChannel.invokeMethod<void>('setAutomaticDetection', enabled);
-    } on PlatformException {
-      // Persistence in SharedPreferences remains authoritative for Flutter.
-    }
+    return prefs.setBool(automaticDetectionEnabledKey, enabled);
   }
 }
 
-final automaticDetectionProvider = StateNotifierProvider<AutomaticDetectionController, bool>((ref) => AutomaticDetectionController());
+abstract interface class AutomaticDetectionPlatform {
+  Future<bool> permissionGranted();
+  Future<bool> requestPermission();
+  Future<void> synchronizeReceiver(bool enabled);
+}
+
+class MethodChannelAutomaticDetectionPlatform
+    implements AutomaticDetectionPlatform {
+  const MethodChannelAutomaticDetectionPlatform();
+
+  @override
+  Future<bool> permissionGranted() => const SmsPermissionBridge().isGranted();
+
+  @override
+  Future<bool> requestPermission() => const SmsPermissionBridge().request();
+
+  @override
+  Future<void> synchronizeReceiver(bool enabled) =>
+      _nativeChannel.invokeMethod<void>('setAutomaticDetection', enabled);
+}
+
+/// The single owner of the persisted, native and runtime automatic-detection
+/// state. A true state is published only after permission, receiver sync and
+/// persistence have all succeeded; the application-scoped live provider uses
+/// that state to attach its EventChannel listener.
+class AutomaticDetectionController extends StateNotifier<bool> {
+  AutomaticDetectionController({
+    AutomaticDetectionStore store =
+        const SharedPreferencesAutomaticDetectionStore(),
+    AutomaticDetectionPlatform platform =
+        const MethodChannelAutomaticDetectionPlatform(),
+    bool restoreOnCreate = true,
+  }) : _store = store,
+       _platform = platform,
+       super(false) {
+    _restoration = restoreOnCreate
+        ? _restoreAutomaticDetection()
+        : Future<bool>.value(false);
+  }
+
+  final AutomaticDetectionStore _store;
+  final AutomaticDetectionPlatform _platform;
+  late final Future<bool> _restoration;
+
+  Future<bool> get restored => _restoration;
+
+  Future<bool> _restoreAutomaticDetection() async {
+    final enabled = await _store.readEnabled();
+    developer.log('startup_restore enabled=$enabled', name: 'FlowlySMS');
+    if (!enabled) return _applyDisabledState(persist: false);
+
+    try {
+      final granted = await _platform.permissionGranted();
+      developer.log('permission_granted=$granted', name: 'FlowlySMS');
+      if (!granted) {
+        await _platform.synchronizeReceiver(false);
+        await _store.writeEnabled(false);
+        state = false;
+        developer.log('native_receiver_synced=false', name: 'FlowlySMS');
+        return false;
+      }
+      await _platform.synchronizeReceiver(true);
+      developer.log('native_receiver_synced=true', name: 'FlowlySMS');
+      state = true;
+      return true;
+    } catch (_) {
+      try {
+        await _platform.synchronizeReceiver(false);
+      } catch (_) {
+        // Best-effort rollback; state still remains disabled.
+      }
+      state = false;
+      developer.log('native_receiver_synced=false', name: 'FlowlySMS');
+      return false;
+    }
+  }
+
+  Future<bool> restoreAutomaticDetection() => _restoration;
+
+  Future<bool> enableAutomaticDetection() async {
+    await _restoration;
+    try {
+      final alreadyGranted = await _platform.permissionGranted();
+      final granted = alreadyGranted || await _platform.requestPermission();
+      developer.log('permission_granted=$granted', name: 'FlowlySMS');
+      if (!granted) {
+        await _applyDisabledState(persist: true);
+        return false;
+      }
+
+      await _platform.synchronizeReceiver(true);
+      developer.log('native_receiver_synced=true', name: 'FlowlySMS');
+      if (!await _store.writeEnabled(true)) {
+        await _platform.synchronizeReceiver(false);
+        developer.log('native_receiver_synced=false', name: 'FlowlySMS');
+        return false;
+      }
+      state = true;
+      return true;
+    } catch (_) {
+      state = false;
+      developer.log('native_receiver_synced=false', name: 'FlowlySMS');
+      return false;
+    }
+  }
+
+  Future<bool> disableAutomaticDetection() async {
+    await _restoration;
+    return _applyDisabledState(persist: true);
+  }
+
+  Future<bool> _applyDisabledState({required bool persist}) async {
+    state = false;
+    try {
+      await _platform.synchronizeReceiver(false);
+      developer.log('native_receiver_synced=false', name: 'FlowlySMS');
+      if (persist && !await _store.writeEnabled(false)) return false;
+      state = false;
+      return true;
+    } catch (_) {
+      developer.log('native_receiver_synced=false', name: 'FlowlySMS');
+      return false;
+    }
+  }
+
+  Future<bool> setEnabled(bool enabled) =>
+      enabled ? enableAutomaticDetection() : disableAutomaticDetection();
+}
+
+final automaticDetectionProvider =
+    StateNotifierProvider<AutomaticDetectionController, bool>(
+      (ref) => AutomaticDetectionController(),
+    );

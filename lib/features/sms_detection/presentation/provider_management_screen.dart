@@ -73,17 +73,14 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(
-              context,
-              (
-                nameController.text,
-                aliasesController.text
-                    .split('\n')
-                    .map((value) => value.trim())
-                    .where((value) => value.isNotEmpty)
-                    .toList(),
-              ),
-            ),
+            onPressed: () => Navigator.pop(context, (
+              nameController.text,
+              aliasesController.text
+                  .split('\n')
+                  .map((value) => value.trim())
+                  .where((value) => value.isNotEmpty)
+                  .toList(),
+            )),
             child: const Text('Save'),
           ),
         ],
@@ -120,42 +117,54 @@ class _ProviderManagementScreenState extends State<ProviderManagementScreen> {
               const _ProviderIntro(),
               const SizedBox(height: 14),
               ...providers.map((provider) {
-              final linked = mappings
-                  .where((mapping) => mapping.providerId == provider.id)
-                  .toList();
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                leading: const FlowlyIcon(icon: Icons.account_tree_outlined),
-                title: Text(provider.name),
-                subtitle: Text(
-                  linked.isEmpty
-                      ? 'No account mapping'
-                      : '${linked.length} account mapping${linked.length == 1 ? '' : 's'}',
-                ),
-                trailing: Switch(
-                  value: provider.enabled,
-                  onChanged: (enabled) async {
-                    await database.saveSmsProvider(
-                      SmsProvider(
-                        id: provider.id,
-                        name: provider.name,
-                        senderAliases: provider.senderAliases,
-                        enabled: enabled,
+                final linked = mappings
+                    .where((mapping) => mapping.providerId == provider.id)
+                    .toList();
+                final mappedNames = linked
+                    .map(
+                      (mapping) => accounts
+                          .where((account) => account.id == mapping.accountId)
+                          .firstOrNull
+                          ?.name,
+                    )
+                    .whereType<String>()
+                    .join(', ');
+                return Card(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: ListTile(
+                    leading: const FlowlyIcon(
+                      icon: Icons.account_tree_outlined,
+                    ),
+                    title: Text(provider.name),
+                    subtitle: Text(
+                      linked.isEmpty
+                          ? 'Mapped Account: Not set'
+                          : 'Mapped Account: $mappedNames',
+                    ),
+                    trailing: Switch(
+                      value: provider.enabled,
+                      onChanged: (enabled) async {
+                        await database.saveSmsProvider(
+                          SmsProvider(
+                            id: provider.id,
+                            name: provider.name,
+                            senderAliases: provider.senderAliases,
+                            enabled: enabled,
+                          ),
+                        );
+                        await _load();
+                      },
+                    ),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ProviderDetailsScreen(provider: provider),
                       ),
-                    );
-                    await _load();
-                  },
-                ),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ProviderDetailsScreen(provider: provider),
+                    ).then((_) => _load()),
                   ),
-                ).then((_) => _load()),
-                ),
-              );
-            }),
+                );
+              }),
             ],
           ),
   );
@@ -211,14 +220,33 @@ class _ProviderDetailsScreenState extends State<ProviderDetailsScreen> {
             final account = accounts
                 .where((a) => a.id == mapping.accountId)
                 .firstOrNull;
+            final linkedAccount = accounts
+                .where((a) => a.id == mapping.linkedAccountId)
+                .firstOrNull;
             return ListTile(
               title: Text(account?.name ?? 'Archived account'),
-              trailing: IconButton(
-                icon: const Icon(Icons.remove_circle_outline),
-                onPressed: () async {
-                  await database.removeProviderAccountMapping(mapping.id!);
-                  await _load();
-                },
+              subtitle: Text(
+                linkedAccount == null
+                    ? 'Linked Account: Not set'
+                    : 'Linked Account: ${linkedAccount.name}',
+              ),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    tooltip: 'Choose linked account',
+                    icon: const Icon(Icons.swap_horiz_rounded),
+                    onPressed: () => _chooseLinkedAccount(mapping),
+                  ),
+                  IconButton(
+                    tooltip: 'Remove mapping',
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: () async {
+                      await database.removeProviderAccountMapping(mapping.id!);
+                      await _load();
+                    },
+                  ),
+                ],
               ),
             );
           }),
@@ -254,20 +282,73 @@ class _ProviderDetailsScreenState extends State<ProviderDetailsScreen> {
       ),
     );
   }
+
+  Future<void> _chooseLinkedAccount(ProviderAccountMapping mapping) async {
+    final choices = accounts
+        .where((account) => account.id != mapping.accountId)
+        .toList();
+    final selected = await showModalBottomSheet<int?>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView(
+          shrinkWrap: true,
+          children: [
+            const ListTile(
+              title: Text('Linked Account'),
+              subtitle: Text(
+                'Choose the owned account on the other side of transfers.',
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.link_off_rounded),
+              title: const Text('Not set'),
+              onTap: () => Navigator.pop(context, -1),
+            ),
+            ...choices.map(
+              (account) => ListTile(
+                leading: const Icon(Icons.account_balance_outlined),
+                title: Text(account.name),
+                subtitle: Text(account.type.replaceAll('_', ' ')),
+                onTap: () => Navigator.pop(context, account.id),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected == null || !mounted) return;
+    await database.setProviderLinkedAccount(
+      mapping.id!,
+      selected == -1 ? null : selected,
+    );
+    await _load();
+  }
 }
 
 class _ProviderIntro extends StatelessWidget {
   const _ProviderIntro();
   @override
   Widget build(BuildContext context) => FlowlySurface(
-    child: Row(children: [
-      const FlowlyIcon(icon: Icons.privacy_tip_outlined),
-      const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('Recognized providers', style: Theme.of(context).textTheme.titleMedium),
-        const SizedBox(height: 3),
-        const Text('Use the sender name shown on your device. Messages are processed on this device.'),
-      ])),
-    ]),
+    child: Row(
+      children: [
+        const FlowlyIcon(icon: Icons.privacy_tip_outlined),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Recognized providers',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+              const SizedBox(height: 3),
+              const Text(
+                'Use the sender name shown on your device. Messages are processed on this device.',
+              ),
+            ],
+          ),
+        ),
+      ],
+    ),
   );
 }

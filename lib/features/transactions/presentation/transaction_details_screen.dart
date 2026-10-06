@@ -5,7 +5,9 @@ import '../../../core/formatters/money_formatter.dart';
 import '../domain/entities/transaction.dart';
 import '../domain/services/transfer_reconciliation_service.dart';
 import '../providers/transaction_provider.dart';
+import '../providers/transfer_candidate_provider.dart';
 import 'transaction_form_screen.dart';
+import 'transaction_presentation.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../accounts/providers/account_provider.dart';
 import '../../../core/theme/app_colors.dart';
@@ -14,135 +16,166 @@ class TransactionDetailsScreen extends ConsumerWidget {
   const TransactionDetailsScreen({super.key, required this.transaction});
   final Transaction transaction;
   @override
-  Widget build(BuildContext c, WidgetRef r) => Scaffold(
-    appBar: AppBar(
-      title: const Text('Transaction'),
-      actions: [
-        if (transaction.type == TransactionType.expense &&
-            transaction.id != null)
+  Widget build(BuildContext c, WidgetRef r) {
+    final accounts = r.watch(accountListProvider).valueOrNull ?? const [];
+    final accountNames = {
+      for (final account in accounts) account.id: account.name,
+    };
+    final sourceAccountName = accountNames[transaction.accountId] ?? 'Account';
+    final destinationAccountName =
+        accountNames[transaction.destinationAccountId] ?? 'Account';
+    final canUnlink =
+        transaction.type == TransactionType.transfer &&
+        transaction.id != null &&
+        r.watch(reconciledTransferProvider(transaction.id!)).valueOrNull ==
+            true;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Transaction'),
+        actions: [
+          if (transaction.type == TransactionType.expense &&
+              transaction.id != null)
+            IconButton(
+              tooltip: 'Mark as transfer',
+              icon: const Icon(Icons.swap_horiz_rounded),
+              onPressed: () => _showTransferCandidates(c, r, transaction),
+            ),
+          if (canUnlink)
+            IconButton(
+              tooltip: 'Unlink transfer',
+              icon: const Icon(Icons.link_off_rounded),
+              onPressed: () async {
+                final approved = await showFlowlyConfirmation(
+                  c,
+                  title: 'Unlink transfer?',
+                  message: 'The original incoming and outgoing SMS records will be restored.',
+                  confirmLabel: 'Unlink transfer',
+                );
+                if (!approved) return;
+                try {
+                  await r
+                      .read(transactionListProvider.notifier)
+                      .unlinkTransfer(transaction.id!);
+                  await r
+                      .read(pendingSmsTransferListProvider.notifier)
+                      .refresh();
+                  if (c.mounted) Navigator.pop(c);
+                } on StateError {
+                  if (c.mounted) {
+                    ScaffoldMessenger.of(c).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'This transfer is not linked to an SMS pair.',
+                        ),
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
           IconButton(
-            tooltip: 'Mark as transfer',
-            icon: const Icon(Icons.swap_horiz_rounded),
-            onPressed: () => _showTransferCandidates(c, r, transaction),
+            onPressed: () => Navigator.push(
+              c,
+              MaterialPageRoute(
+                builder: (_) => TransactionFormScreen(transaction: transaction),
+              ),
+            ),
+            icon: const Icon(Icons.edit_outlined),
           ),
-        if (transaction.type == TransactionType.transfer &&
-            transaction.id != null)
           IconButton(
-            tooltip: 'Unlink transfer',
-            icon: const Icon(Icons.link_off_rounded),
+            tooltip: 'Delete transaction',
+            icon: const Icon(Icons.delete_outline),
             onPressed: () async {
               final approved = await showFlowlyConfirmation(
                 c,
-                title: 'Unlink transfer?',
-                message: 'The original incoming and outgoing SMS records will be restored.',
-                confirmLabel: 'Unlink transfer',
+                title: 'Delete transaction?',
+                message: 'Totals, budgets, and analytics will update.',
+                confirmLabel: 'Delete transaction',
               );
-              if (!approved) return;
-              try {
+              if (approved && transaction.id != null) {
                 await r
                     .read(transactionListProvider.notifier)
-                    .unlinkTransfer(transaction.id!);
+                    .delete(transaction.id!);
                 if (c.mounted) Navigator.pop(c);
-              } on StateError {
-                if (c.mounted) {
-                  ScaffoldMessenger.of(c).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'This transfer is not linked to an SMS pair.',
-                      ),
-                    ),
-                  );
-                }
               }
             },
           ),
-        IconButton(
-          onPressed: () => Navigator.push(
-            c,
-            MaterialPageRoute(
-              builder: (_) => TransactionFormScreen(transaction: transaction),
-            ),
-          ),
-          icon: const Icon(Icons.edit_outlined),
-        ),
-        IconButton(
-          tooltip: 'Delete transaction',
-          icon: const Icon(Icons.delete_outline),
-          onPressed: () async {
-            final approved = await showFlowlyConfirmation(
-              c,
-              title: 'Delete transaction?',
-              message: 'Totals, budgets, and analytics will update.',
-              confirmLabel: 'Delete transaction',
-            );
-            if (approved && transaction.id != null) {
-              await r
-                  .read(transactionListProvider.notifier)
-                  .delete(transaction.id!);
-              if (c.mounted) Navigator.pop(c);
-            }
-          },
-        ),
-      ],
-    ),
-    body: ListView(
-      padding: const EdgeInsets.all(20),
-      children: [
-        _TransactionHero(transaction: transaction),
-        const SizedBox(height: 20),
-        FlowlySection(
-          title: 'Transaction information',
-          children: [
-            ListTile(
-              title: const Text('Account'),
-              trailing: Text(
-                (r
-                        .watch(accountListProvider)
-                        .valueOrNull
-                        ?.where((a) => a.id == transaction.accountId)
-                        .firstOrNull
-                        ?.name) ??
-                    'Account',
-              ),
-            ),
-            ListTile(
-              title: const Text('Transaction time'),
-              trailing: Text(_formatDateTime(c, transaction.date)),
-            ),
-            ListTile(
-              title: const Text('Flowly created at'),
-              trailing: Text(
-                transaction.createdAt == null
-                    ? 'Unavailable'
-                    : _formatDateTime(c, transaction.createdAt!),
-              ),
-            ),
-            ListTile(
-              title: const Text('Category'),
-              trailing: Text(transaction.category),
-            ),
-            ListTile(
-              title: const Text('Type'),
-              trailing: Text(transaction.type.name),
-            ),
-            ListTile(
-              title: const Text('Source'),
-              trailing: Text(transaction.source.name),
-            ),
-            ListTile(
-              title: const Text('Status'),
-              trailing: Text(transaction.status.name),
-            ),
-            if (transaction.notes.isNotEmpty)
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          _TransactionHero(transaction: transaction),
+          const SizedBox(height: 20),
+          FlowlySection(
+            title: 'Transaction information',
+            children: [
+              if (transaction.type == TransactionType.transfer) ...[
+                ListTile(
+                  leading: const Icon(Icons.call_made_rounded),
+                  title: const Text('From'),
+                  trailing: Text(sourceAccountName),
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(left: 34),
+                  child: Icon(Icons.south_rounded, size: 18),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.call_received_rounded),
+                  title: const Text('To'),
+                  trailing: Text(destinationAccountName),
+                ),
+                ListTile(
+                  title: const Text('Amount'),
+                  trailing: Text(
+                    MoneyFormatter.format(transaction.amountMinor),
+                  ),
+                ),
+              ] else
+                ListTile(
+                  title: const Text('Account'),
+                  trailing: Text(sourceAccountName),
+                ),
               ListTile(
-                title: const Text('Notes'),
-                subtitle: Text(transaction.notes),
+                title: const Text('Transaction time'),
+                trailing: Text(_formatDateTime(c, transaction.date)),
               ),
-          ],
-        ),
-      ],
-    ),
-  );
+              ListTile(
+                title: const Text('Flowly created at'),
+                trailing: Text(
+                  transaction.createdAt == null
+                      ? 'Unavailable'
+                      : _formatDateTime(c, transaction.createdAt!),
+                ),
+              ),
+              ListTile(
+                title: const Text('Category'),
+                trailing: Text(transaction.category),
+              ),
+              ListTile(
+                title: const Text('Type'),
+                trailing: Text(transaction.type.name),
+              ),
+              ListTile(
+                title: const Text('Source'),
+                trailing: Text(transaction.source.displayLabel),
+              ),
+              ListTile(
+                title: const Text('Status'),
+                trailing: Text(transaction.status.name),
+              ),
+              if (transaction.notes.isNotEmpty)
+                ListTile(
+                  title: const Text('Notes'),
+                  subtitle: Text(transaction.notes),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 Future<void> _showTransferCandidates(
@@ -154,7 +187,8 @@ Future<void> _showTransferCandidates(
       ref.read(transactionListProvider).valueOrNull ?? const <Transaction>[];
   final accounts = ref.read(accountListProvider).valueOrNull ?? const [];
   final currencies = {
-    for (final account in accounts) account.id as int: account.currency as String,
+    for (final account in accounts)
+      account.id as int: account.currency as String,
   };
   final outgoingCurrency = currencies[outgoing.accountId];
   if (outgoingCurrency == null) return;

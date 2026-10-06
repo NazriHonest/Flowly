@@ -16,6 +16,7 @@ class ProviderAccountMapping {
     this.id,
     required this.providerId,
     required this.accountId,
+    this.linkedAccountId,
   });
-  final int? id, providerId, accountId;
+  final int? id, providerId, accountId, linkedAccountId;
 }

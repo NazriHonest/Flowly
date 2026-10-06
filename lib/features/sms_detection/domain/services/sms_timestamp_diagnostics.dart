@@ -1,7 +1,9 @@
 /// Privacy-safe comparison of normalized timestamps. It never accepts or logs
 /// a raw SMS body, sender, or counterparty.
 class SmsTimestampDiagnostics {
-  const SmsTimestampDiagnostics({this.unexpectedDifference = const Duration(hours: 6)});
+  const SmsTimestampDiagnostics({
+    this.unexpectedDifference = const Duration(hours: 6),
+  });
 
   final Duration unexpectedDifference;
 

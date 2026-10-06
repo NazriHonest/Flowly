@@ -2,6 +2,10 @@ import '../domain/entities/transaction_candidate.dart';
 import '../domain/services/confidence_calculator.dart';
 import '../domain/services/financial_sms_parser.dart';
 
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
+
 /// Shared, privacy-preserving helpers for provider-specific SMS parsers.
 /// Only normalized candidate fields leave the parser; the raw message is never
 /// retained by this class.
@@ -12,7 +16,10 @@ abstract class ProviderSmsParser implements FinancialSmsParser {
   final String marker;
   final _confidence = const ConfidenceCalculator();
 
-  static final amountPattern = RegExp(r'\$(\d{1,9})(?:[,.](\d{1,2}))?');
+  static final amountPattern = RegExp(
+    r'(?:USD\s*|\$)\s*(\d{1,9})(?:[,.](\d{1,2}))?',
+    caseSensitive: false,
+  );
   static final timestampPattern = RegExp(
     r'(\d{2}/\d{2}/(?:\d{2}|\d{4})\s+\d{2}:\d{2}:\d{2})(?::\d{3})?',
   );
@@ -20,9 +27,9 @@ abstract class ProviderSmsParser implements FinancialSmsParser {
   @override
   bool canParse({required String sender, required String message}) =>
       message
-              .toLowerCase()
-              .replaceAll(RegExp(r'\s+'), '')
-              .contains(marker.toLowerCase().replaceAll(' ', '')) &&
+          .toLowerCase()
+          .replaceAll(RegExp(r'\s+'), '')
+          .contains(marker.toLowerCase().replaceAll(' ', '')) &&
       matchesTransaction(message);
 
   bool matchesTransaction(String message);
@@ -50,6 +57,7 @@ abstract class ProviderSmsParser implements FinancialSmsParser {
       type: true,
       amount: true,
       currency: true,
+      reference: parsed.reference != null,
       merchant: parsed.counterpartyName != null,
       validTimestamp: timestamp.valid,
     );
@@ -62,6 +70,11 @@ abstract class ProviderSmsParser implements FinancialSmsParser {
       providerTransactionAt: timestamp.providerValue,
       confidence: confidence,
       merchant: parsed.counterpartyName,
+      counterpartyPhone: parsed.counterpartyPhone,
+      reference: parsed.reference,
+      semantics: parsed.semantics,
+      transferDirection: parsed.transferDirection,
+      accountHintHash: parsed.accountHintHash,
     );
   }
 
@@ -69,13 +82,22 @@ abstract class ProviderSmsParser implements FinancialSmsParser {
     String? raw,
     DateTime fallback,
   ) {
-    if (raw == null) return (value: fallback, providerValue: null, valid: false);
+    if (raw == null)
+      return (value: fallback, providerValue: null, valid: false);
+    final providerValue = parseProviderTimestamp(raw);
+    if (providerValue == null) {
+      return (value: fallback, providerValue: null, valid: false);
+    }
+    return (value: providerValue, providerValue: providerValue, valid: true);
+  }
+
+  DateTime? parseProviderTimestamp(String raw) {
     final match = timestampPattern.firstMatch(raw);
-    if (match == null) return (value: fallback, providerValue: null, valid: false);
+    if (match == null) return null;
     final parts = RegExp(
       r'^(\d{2})/(\d{2})/(\d{2,4})\s+(\d{2}):(\d{2}):(\d{2})$',
     ).firstMatch(match.group(1)!);
-    if (parts == null) return (value: fallback, providerValue: null, valid: false);
+    if (parts == null) return null;
     final day = int.parse(parts.group(1)!);
     final month = int.parse(parts.group(2)!);
     var year = int.parse(parts.group(3)!);
@@ -85,19 +107,16 @@ abstract class ProviderSmsParser implements FinancialSmsParser {
     final second = int.parse(parts.group(6)!);
     try {
       final value = DateTime(year, month, day, hour, minute, second);
-      final valid = value.year == year &&
+      final valid =
+          value.year == year &&
           value.month == month &&
           value.day == day &&
           value.hour == hour &&
           value.minute == minute &&
           value.second == second;
-      return (
-        value: valid ? value : fallback,
-        providerValue: valid ? value : null,
-        valid: valid,
-      );
+      return valid ? value : null;
     } on FormatException {
-      return (value: fallback, providerValue: null, valid: false);
+      return null;
     }
   }
 }
@@ -107,11 +126,26 @@ class ParsedProviderMessage {
     required this.type,
     required this.timestamp,
     this.counterpartyName,
+    this.counterpartyPhone,
+    this.reference,
+    this.semantics = CandidateSemantics.ordinary,
+    this.transferDirection,
+    this.accountHintHash,
   });
 
   final CandidateType type;
   final String? timestamp;
   final String? counterpartyName;
+  final String? counterpartyPhone;
+  final String? reference;
+  final CandidateSemantics semantics;
+  final TransferObservationDirection? transferDirection;
+  final String? accountHintHash;
+}
+
+String safeAccountHintHash(String raw) {
+  final normalized = raw.toUpperCase().replaceAll(RegExp(r'[^A-Z0-9*X]'), '');
+  return sha256.convert(utf8.encode(normalized)).toString();
 }
 
 String? normalizeCounterparty(String raw) {

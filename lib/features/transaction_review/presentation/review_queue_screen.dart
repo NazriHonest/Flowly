@@ -9,13 +9,17 @@ import '../../transactions/presentation/transaction_form_screen.dart';
 import '../../transactions/providers/transaction_provider.dart';
 import '../../transactions/providers/transfer_candidate_provider.dart';
 import 'possible_transfers_screen.dart';
+import 'pending_sms_transfers_screen.dart';
 
 class ReviewQueueScreen extends ConsumerWidget {
   const ReviewQueueScreen({super.key});
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(transactionListProvider);
-    final possibleTransfers = ref.watch(transferCandidateListProvider).valueOrNull ?? const [];
+    final possibleTransfers =
+        ref.watch(transferCandidateListProvider).valueOrNull ?? const [];
+    final pendingSmsTransfers =
+        ref.watch(pendingSmsTransferListProvider).valueOrNull ?? const [];
     return Scaffold(
       appBar: AppBar(title: const Text('Review')),
       body: state.when(
@@ -29,7 +33,9 @@ class ReviewQueueScreen extends ConsumerWidget {
           final review = items
               .where((item) => item.status == ReviewStatus.needsReview)
               .toList();
-          if (review.isEmpty && possibleTransfers.isEmpty) {
+          if (review.isEmpty &&
+              possibleTransfers.isEmpty &&
+              pendingSmsTransfers.isEmpty) {
             return const AppEmptyState(
               icon: Icons.task_alt_rounded,
               title: 'You’re all caught up',
@@ -40,13 +46,40 @@ class ReviewQueueScreen extends ConsumerWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(16, 10, 16, 28),
             children: [
-              if (possibleTransfers.isNotEmpty) Card(child: ListTile(
-                leading: const Icon(Icons.compare_arrows_rounded),
-                title: const Text('Possible transfers'),
-                subtitle: Text('${possibleTransfers.length} movement${possibleTransfers.length == 1 ? '' : 's'} between your accounts need review.'),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PossibleTransfersScreen())),
-              )),
+              if (possibleTransfers.isNotEmpty)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.compare_arrows_rounded),
+                    title: const Text('Possible transfers'),
+                    subtitle: Text(
+                      '${possibleTransfers.length} movement${possibleTransfers.length == 1 ? '' : 's'} between your accounts need review.',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PossibleTransfersScreen(),
+                      ),
+                    ),
+                  ),
+                ),
+              if (pendingSmsTransfers.isNotEmpty)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.account_balance_outlined),
+                    title: const Text('Possible account transfers'),
+                    subtitle: Text(
+                      '${pendingSmsTransfers.length} transfer${pendingSmsTransfers.length == 1 ? '' : 's'} need a linked account.',
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PendingSmsTransfersScreen(),
+                      ),
+                    ),
+                  ),
+                ),
               Container(
                 padding: const EdgeInsets.all(14),
                 margin: const EdgeInsets.only(bottom: 14),
@@ -139,110 +172,130 @@ class ReviewDetailsScreen extends ConsumerWidget {
   const ReviewDetailsScreen({super.key, required this.transaction});
   final Transaction transaction;
   @override
-  Widget build(BuildContext context, WidgetRef ref) => Scaffold(
-    appBar: AppBar(title: const Text('Review transaction')),
-    body: ListView(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: AppColors.warning.withValues(alpha: .12),
-            borderRadius: BorderRadius.circular(18),
-          ),
-          child: Column(
-            children: [
-              const Icon(
-                Icons.manage_search_rounded,
-                color: AppColors.warning,
-                size: 32,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                transaction.title,
-                style: Theme.of(context).textTheme.titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 5),
-              Text(
-                MoneyFormatter.signed(
-                  transaction.amountMinor,
-                  negative: transaction.type == TransactionType.expense,
+  Widget build(BuildContext context, WidgetRef ref) {
+    final current =
+        (ref.watch(transactionListProvider).valueOrNull ??
+                const <Transaction>[])
+            .where((item) => item.id == transaction.id)
+            .firstOrNull;
+    if (current == null) {
+      return const Scaffold(
+        body: AppEmptyState(
+          icon: Icons.task_alt_rounded,
+          title: 'Review complete',
+          message: 'This transaction is no longer awaiting review.',
+        ),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(title: const Text('Review transaction')),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppColors.warning.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.manage_search_rounded,
+                  color: AppColors.warning,
+                  size: 32,
                 ),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w800,
+                const SizedBox(height: 8),
+                Text(
+                  current.title,
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800),
                 ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Amount'),
-          subtitle: Text(MoneyFormatter.format(transaction.amountMinor)),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Category'),
-          subtitle: Text(transaction.category),
-        ),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Type'),
-          subtitle: Text(transaction.type.name),
-        ),
-        const SizedBox(height: 12),
-        FilledButton.icon(
-          icon: const Icon(Icons.check),
-          label: const Text('Confirm transaction'),
-          onPressed: () => _setStatus(context, ref, ReviewStatus.confirmed),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          icon: const Icon(Icons.edit_outlined),
-          label: const Text('Edit before confirming'),
-          onPressed: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => TransactionFormScreen(transaction: transaction),
+                const SizedBox(height: 5),
+                Text(
+                  MoneyFormatter.signed(
+                    current.amountMinor,
+                    negative: current.type == TransactionType.expense,
+                  ),
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(foregroundColor: AppColors.expense),
-          icon: const Icon(Icons.block_outlined),
-          label: const Text('Ignore transaction'),
-          onPressed: () => _setStatus(context, ref, ReviewStatus.ignored),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 16),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Amount'),
+            subtitle: Text(MoneyFormatter.format(current.amountMinor)),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Category'),
+            subtitle: Text(current.category),
+          ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('Type'),
+            subtitle: Text(current.type.name),
+          ),
+          const SizedBox(height: 12),
+          FilledButton.icon(
+            icon: const Icon(Icons.check),
+            label: const Text('Confirm transaction'),
+            onPressed: () =>
+                _setStatus(context, ref, current, ReviewStatus.confirmed),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit before confirming'),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => TransactionFormScreen(transaction: current),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.expense),
+            icon: const Icon(Icons.block_outlined),
+            label: const Text('Ignore transaction'),
+            onPressed: () =>
+                _setStatus(context, ref, current, ReviewStatus.ignored),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _setStatus(
     BuildContext context,
     WidgetRef ref,
+    Transaction current,
     ReviewStatus status,
   ) async {
     await ref
         .read(transactionListProvider.notifier)
         .save(
           Transaction(
-            id: transaction.id,
-            amountMinor: transaction.amountMinor,
-            type: transaction.type,
-            title: transaction.title,
-            category: transaction.category,
-            accountId: transaction.accountId,
-            destinationAccountId: transaction.destinationAccountId,
-            date: transaction.date,
-            source: transaction.source,
+            id: current.id,
+            amountMinor: current.amountMinor,
+            type: current.type,
+            title: current.title,
+            category: current.category,
+            accountId: current.accountId,
+            destinationAccountId: current.destinationAccountId,
+            date: current.date,
+            source: current.source,
             status: status,
-            notes: transaction.notes,
-            providerTransactionAt: transaction.providerTransactionAt,
-            smsReceivedAt: transaction.smsReceivedAt,
-            createdAt: transaction.createdAt,
+            notes: current.notes,
+            providerTransactionAt: current.providerTransactionAt,
+            smsReceivedAt: current.smsReceivedAt,
+            createdAt: current.createdAt,
           ),
         );
     if (context.mounted) Navigator.pop(context);

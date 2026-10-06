@@ -15,6 +15,9 @@ class DuplicateDetector {
       candidate.amountMinor.toString(),
       candidate.currency.toUpperCase(),
       candidate.type.name,
+      candidate.semantics.name,
+      candidate.transferDirection?.name ?? '',
+      candidate.accountHintHash ?? '',
       candidate.transactionDate.toUtc().millisecondsSinceEpoch.toString(),
     ].join('|');
     return sha256.convert(utf8.encode(input)).toString();

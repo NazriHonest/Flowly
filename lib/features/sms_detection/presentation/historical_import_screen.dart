@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../transactions/providers/transaction_provider.dart';
+import '../../transactions/providers/transfer_candidate_provider.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../data/historical_import_processor.dart';
 import '../data/historical_sms_bridge.dart';
 import '../data/sms_permission_bridge.dart';
+import '../domain/entities/transaction_candidate.dart';
 import '../domain/services/financial_sms_parser_registry.dart';
 import '../domain/services/financial_sms_pipeline.dart';
 import '../parsers/evc_plus_parser.dart';
+import '../parsers/agro_bank_parser.dart';
+import '../parsers/deeqtoon_parser.dart';
 import '../parsers/generic_financial_parser.dart';
 import '../parsers/jeeb_parser.dart';
 import '../../../core/database/app_database.dart';
@@ -36,6 +40,8 @@ class _HistoricalImportScreenState
       FinancialSmsParserRegistry([
         EvcPlusParser(),
         JeebParser(),
+        DeeqtoonParser(),
+        AgroBankParser(),
         GenericFinancialParser(),
       ]),
     ),
@@ -59,10 +65,7 @@ class _HistoricalImportScreenState
       if (mounted) {
         setState(() {
           summary = result;
-          selected = {
-            for (var i = 0; i < result.items.length; i++)
-              if (!result.items[i].duplicate) i,
-          };
+          selected = {};
         });
       }
     } catch (_) {
@@ -77,6 +80,7 @@ class _HistoricalImportScreenState
     setState(() => loading = true);
     final saved = await processor.commit(selected.map((i) => current.items[i]));
     await ref.read(transactionListProvider.notifier).refresh();
+    await ref.read(pendingSmsTransferListProvider.notifier).refresh();
     if (!mounted) return;
     setState(() => loading = false);
     setState(() => completed = saved);
@@ -185,6 +189,8 @@ class _HistoricalImportScreenState
                 _Count('Financial detected', result.detected),
                 _Count('EVC Plus', result.evcPlus),
                 _Count('JEEB', result.jeeb),
+                _Count('DEEQTOON', result.deeqtoon),
+                _Count('AGROBANK', result.agroBank),
                 _Count('Generic', result.generic),
                 _Count('Duplicates', result.duplicates),
                 _Count('Confirmed', result.confirmed),
@@ -194,36 +200,53 @@ class _HistoricalImportScreenState
               ],
             ),
           ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: result.items.length,
-              itemBuilder: (context, index) {
-                final item = result.items[index];
-                return CheckboxListTile(
-                  value: selected.contains(index),
-                  enabled: !item.duplicate,
-                  onChanged: (value) => setState(() {
-                    if (value == true) {
-                      selected.add(index);
-                    } else {
-                      selected.remove(index);
-                    }
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => setState(() {
+                    selected = {
+                      for (var i = 0; i < result.items.length; i++)
+                        if (!result.items[i].duplicate) i,
+                    };
                   }),
-                  title: Text(item.provider),
-                  subtitle: Text(
-                    '${item.transaction.type == TransactionType.income ? 'Income' : 'Expense'} · '
-                    '${_dateTime(item.transaction.date)}\n'
-                    'Account: ${item.accountName} · '
-                    '${item.transaction.status == ReviewStatus.confirmed ? 'Confirmed' : 'Needs review'}'
-                    '${item.duplicate ? ' · Duplicate' : ''}',
-                  ),
-                  isThreeLine: true,
-                  secondary: Text(
-                    '${item.transaction.type == TransactionType.income ? '+' : '-'}${MoneyFormatter.format(item.transaction.amountMinor, code: item.currency)}',
-                    textAlign: TextAlign.end,
-                  ),
-                );
-              },
+                  child: const Text('Select all'),
+                ),
+                const SizedBox(width: 4),
+                TextButton(
+                  onPressed: selected.isEmpty
+                      ? null
+                      : () => setState(selected.clear),
+                  child: const Text('Clear all'),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: SafeArea(
+              top: false,
+              child: ListView.builder(
+                padding: const EdgeInsets.only(bottom: 24),
+                itemCount: result.items.length,
+                itemBuilder: (context, index) {
+                  final item = result.items[index];
+                  return _HistoricalImportTile(
+                    item: item,
+                    selected: selected.contains(index),
+                    onChanged: item.duplicate
+                        ? null
+                        : (value) => setState(() {
+                            if (value == true) {
+                              selected.add(index);
+                            } else {
+                              selected.remove(index);
+                            }
+                          }),
+                  );
+                },
+              ),
             ),
           ),
         ],
@@ -239,13 +262,147 @@ class _HistoricalImportScreenState
       ),
     );
   }
+}
 
-  String _dateTime(DateTime value) {
-    final local = value.toLocal();
-    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
-    final minute = local.minute.toString().padLeft(2, '0');
-    return '${local.year}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')} '
-        '$hour:$minute ${local.hour < 12 ? 'AM' : 'PM'}';
+class _HistoricalImportTile extends StatelessWidget {
+  const _HistoricalImportTile({
+    required this.item,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final HistoricalImportItem item;
+  final bool selected;
+  final ValueChanged<bool?>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+    final candidate = item.transferCandidate;
+    final isTransfer = candidate != null;
+    final isIncoming =
+        candidate?.transferDirection == TransferObservationDirection.incoming;
+    final counterpart = item.linkedAccountName;
+    final direction = !isTransfer
+        ? null
+        : counterpart == null
+        ? 'Bank transfer'
+        : isIncoming
+        ? '$counterpart  →  ${item.accountName}'
+        : '${item.accountName}  →  $counterpart';
+    final perspective = !isTransfer
+        ? null
+        : isIncoming
+        ? 'Incoming to ${item.accountName}'
+        : 'Outgoing from ${item.accountName}';
+    final unresolved = !isTransfer || counterpart != null
+        ? null
+        : isIncoming
+        ? 'Source account required'
+        : 'Destination account required';
+    final status = item.duplicate
+        ? 'Duplicate'
+        : item.transaction.status == ReviewStatus.confirmed
+        ? 'Confirmed'
+        : 'Needs review';
+    final local = item.transaction.date.toLocal();
+    final date = MaterialLocalizations.of(context).formatMediumDate(local);
+    final time = MaterialLocalizations.of(context)
+        .formatTimeOfDay(TimeOfDay.fromDateTime(local));
+    final amountPrefix = isTransfer
+        ? ''
+        : item.transaction.type == TransactionType.income
+        ? '+'
+        : '-';
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+      child: InkWell(
+        onTap: onChanged == null ? null : () => onChanged!(!selected),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(8, 14, 14, 14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Checkbox(value: selected, onChanged: onChanged),
+              const SizedBox(width: 4),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '$amountPrefix${MoneyFormatter.format(item.transaction.amountMinor, code: item.currency)}',
+                            style: theme.textTheme.titleMedium,
+                          ),
+                        ),
+                        Text(
+                          item.provider,
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: colors.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (isTransfer) ...[
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.swap_horiz_rounded,
+                            size: 18,
+                            color: colors.primary,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              direction!,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                color: colors.onSurface,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        unresolved == null
+                            ? 'Bank transfer · $perspective'
+                            : 'Bank transfer · $unresolved',
+                      ),
+                    ] else
+                      Text(
+                        '${item.transaction.type == TransactionType.income ? 'Income' : 'Expense'} · Account: ${item.accountName}',
+                      ),
+                    const SizedBox(height: 5),
+                    Text('$date · $time'),
+                    const SizedBox(height: 3),
+                    Text(
+                      status,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: item.duplicate
+                            ? colors.onSurfaceVariant
+                            : item.transaction.status ==
+                                  ReviewStatus.needsReview
+                            ? colors.tertiary
+                            : colors.primary,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

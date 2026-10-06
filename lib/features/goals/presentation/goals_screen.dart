@@ -30,59 +30,74 @@ class GoalsScreen extends ConsumerWidget {
           message: 'Please try again.',
           onRetry: () => ref.invalidate(goalListProvider),
         ),
-        data: (goals) => goals.isEmpty
-            ? AppEmptyState(
-                icon: Icons.flag_outlined,
-                title: 'Start a savings goal',
-                message: 'Set a target and make steady progress toward it.',
-                actionLabel: 'Add goal',
-                onAction: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const GoalFormScreen()),
-                ),
-              )
-            : ListView.separated(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 92),
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemCount: goals.length,
-                itemBuilder: (_, index) {
-                  final goal = goals[index];
-                  return Card(
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.all(14),
-                      leading: CircleAvatar(
-                        child: const Icon(Icons.flag_outlined),
-                      ),
-                      title: Text(
-                        goal.name,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      subtitle: Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            LinearProgressIndicator(
-                              value: goal.progress.clamp(0, 1),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              '${MoneyFormatter.format(goal.currentMinor)} saved · ${MoneyFormatter.format((goal.targetMinor - goal.currentMinor).clamp(0, goal.targetMinor))} remaining',
-                            ),
-                          ],
-                        ),
-                      ),
-                      trailing: Text('${(goal.progress * 100).round()}%'),
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => GoalDetailsScreen(goal: goal),
+        data: (goals) => RefreshIndicator(
+          onRefresh: () => ref.read(goalListProvider.notifier).refresh(),
+          child: goals.isEmpty
+              ? ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: [
+                    SizedBox(
+                      height: MediaQuery.sizeOf(context).height * .65,
+                      child: AppEmptyState(
+                        icon: Icons.flag_outlined,
+                        title: 'Start a savings goal',
+                        message:
+                            'Set a target and make steady progress toward it.',
+                        actionLabel: 'Add goal',
+                        onAction: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const GoalFormScreen(),
+                          ),
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
+                  ],
+                )
+              : ListView.separated(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 92),
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemCount: goals.length,
+                  itemBuilder: (_, index) {
+                    final goal = goals[index];
+                    return Card(
+                      child: ListTile(
+                        contentPadding: const EdgeInsets.all(14),
+                        leading: CircleAvatar(
+                          child: const Icon(Icons.flag_outlined),
+                        ),
+                        title: Text(
+                          goal.name,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              LinearProgressIndicator(
+                                value: goal.progress.clamp(0, 1),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                '${MoneyFormatter.format(goal.currentMinor)} saved · ${MoneyFormatter.format((goal.targetMinor - goal.currentMinor).clamp(0, goal.targetMinor))} remaining',
+                              ),
+                            ],
+                          ),
+                        ),
+                        trailing: Text('${(goal.progress * 100).round()}%'),
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => GoalDetailsScreen(goal: goal),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
       ),
     );
   }

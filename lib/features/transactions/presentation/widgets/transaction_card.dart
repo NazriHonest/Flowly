@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../../../core/formatters/money_formatter.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../categories/providers/category_provider.dart';
 import '../../domain/entities/transaction.dart';
+import '../transaction_presentation.dart';
 
 /// The single visual language for transaction rows across the app.
 class TransactionCard extends ConsumerWidget {
@@ -83,11 +83,21 @@ class TransactionCard extends ConsumerWidget {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      showSource
-                          ? '${transaction.category} • ${transaction.source.name}'
-                          : transaction.category,
-                      style: Theme.of(context).textTheme.bodySmall,
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            transaction.category,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                        if (showSource) ...[
+                          const SizedBox(width: 7),
+                          _SourceBadge(source: transaction.source),
+                        ],
+                      ],
                     ),
                   ],
                 ),
@@ -105,13 +115,38 @@ class TransactionCard extends ConsumerWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    DateFormat('HH:mm').format(transaction.date),
+                    formatTransactionDate(context, transaction.date),
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SourceBadge extends StatelessWidget {
+  const _SourceBadge({required this.source});
+
+  final TransactionSource source;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: colors.primaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        source.displayLabel,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: colors.onPrimaryContainer,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

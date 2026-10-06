@@ -48,9 +48,23 @@ class BudgetsScreen extends ConsumerWidget {
         ),
         data: (items) {
           if (items.isEmpty) {
-            return const AppEmptyState(
-              icon: Icons.savings_outlined,
-              message: 'Create a budget to track category spending.',
+            return RefreshIndicator(
+              onRefresh: () async {
+                await ref.read(budgetListProvider.notifier).refresh();
+                await ref.read(transactionListProvider.notifier).refresh();
+              },
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(
+                    height: MediaQuery.sizeOf(context).height * .65,
+                    child: const AppEmptyState(
+                      icon: Icons.savings_outlined,
+                      message: 'Create a budget to track category spending.',
+                    ),
+                  ),
+                ],
+              ),
             );
           }
           final total = items.fold<int>(0, (sum, b) => sum + b.amountMinor);
@@ -58,27 +72,34 @@ class BudgetsScreen extends ConsumerWidget {
             0,
             (sum, b) => sum + _spent(b, transactions),
           );
-          return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-            children: [
-              _BudgetOverview(spent: spent, total: total),
-              const SizedBox(height: 14),
-              ...items.map(
-                (budget) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _BudgetCard(
-                    budget: budget,
-                    spent: _spent(budget, transactions),
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => BudgetDetailsScreen(budget: budget),
+          return RefreshIndicator(
+            onRefresh: () async {
+              await ref.read(budgetListProvider.notifier).refresh();
+              await ref.read(transactionListProvider.notifier).refresh();
+            },
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+              children: [
+                _BudgetOverview(spent: spent, total: total),
+                const SizedBox(height: 14),
+                ...items.map(
+                  (budget) => Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _BudgetCard(
+                      budget: budget,
+                      spent: _spent(budget, transactions),
+                      onTap: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => BudgetDetailsScreen(budget: budget),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           );
         },
       ),

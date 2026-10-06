@@ -9,9 +9,14 @@ class FinancialMessageDetector {
     // parsers and must be recognized before generic filtering.
     if (text.contains('[-evcplus-]') ||
         text.contains('[-jeeb-]') ||
-        RegExp(r'ayaad\s+(?:uwareejisay|ka\s+heshay|u\s+dirtay)',
-                caseSensitive: false)
-            .hasMatch(text)) {
+        text.contains('adeega buraaq') ||
+        text.contains('adeega deeqtoon') ||
+        text.contains('bank account-kaaga') ||
+        text.contains('xisaabtaada bangiga') ||
+        RegExp(
+          r'ayaad\s+(?:uwareejisay|ka\s+heshay|u\s+dirtay)',
+          caseSensitive: false,
+        ).hasMatch(text)) {
       return RegExp(r'\d').hasMatch(text);
     }
     return RegExp(

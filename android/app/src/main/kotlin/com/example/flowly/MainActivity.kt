@@ -5,6 +5,7 @@ import android.content.pm.PackageManager
 import android.provider.Telephony
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -19,6 +20,7 @@ class MainActivity : FlutterActivity() {
         const val EXTRA_SMS_RECEIVED_AT = "flowly_sms_received_at"
     }
     private val channelName = "com.flowly/sms_permissions"
+    private val smsLogTag = "FlowlySMS"
     private val requestCode = 4801
     private var pendingResult: MethodChannel.Result? = null
 
@@ -57,7 +59,11 @@ class MainActivity : FlutterActivity() {
         val sender = intent?.getStringExtra(EXTRA_SMS_SENDER) ?: return
         val body = intent.getStringExtra(EXTRA_SMS_BODY) ?: return
         val receivedAt = intent.getLongExtra(EXTRA_SMS_RECEIVED_AT, 0L)
-        SmsEventBridge.publish(sender, body, receivedAt)
+        // Flutter has not necessarily subscribed yet while this Activity is
+        // being configured. The bridge retains this transient payload only in
+        // memory and flushes it once the Dart listener is ready.
+        SmsEventBridge.publishOrQueue(sender, body, receivedAt)
+        Log.d(smsLogTag, "activity_event_forwarded")
         intent.removeExtra(EXTRA_SMS_SENDER)
         intent.removeExtra(EXTRA_SMS_BODY)
         intent.removeExtra(EXTRA_SMS_RECEIVED_AT)

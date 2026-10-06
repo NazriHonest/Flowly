@@ -8,6 +8,7 @@ import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/providers/transaction_provider.dart';
 import '../../transactions/presentation/widgets/transaction_card.dart';
 import '../domain/entities/account.dart';
+import '../domain/services/account_balance_calculator.dart';
 import '../providers/account_provider.dart';
 import 'add_account_screen.dart';
 
@@ -119,34 +120,7 @@ class AccountDetailsScreen extends ConsumerWidget {
                     t.status == ReviewStatus.confirmed,
               )
               .toList();
-          final income = items
-              .where((t) => t.type == TransactionType.income)
-              .fold<int>(0, (v, t) => v + t.amountMinor);
-          final expense = items
-              .where((t) => t.type == TransactionType.expense)
-              .fold<int>(0, (v, t) => v + t.amountMinor);
-          final outgoing = all
-              .where(
-                (t) =>
-                    t.status == ReviewStatus.confirmed &&
-                    t.type == TransactionType.transfer &&
-                    t.accountId == account.id,
-              )
-              .fold<int>(0, (v, t) => v + t.amountMinor);
-          final incoming = all
-              .where(
-                (t) =>
-                    t.status == ReviewStatus.confirmed &&
-                    t.type == TransactionType.transfer &&
-                    t.destinationAccountId == account.id,
-              )
-              .fold<int>(0, (v, t) => v + t.amountMinor);
-          final balance =
-              account.openingBalanceMinor +
-              income -
-              expense -
-              outgoing +
-              incoming;
+          final balance = AccountBalanceCalculator.current(account, all);
 
           final recent = items.take(10).toList();
 

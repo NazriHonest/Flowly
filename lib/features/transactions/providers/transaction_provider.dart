@@ -57,3 +57,11 @@ final transactionListProvider =
     StateNotifierProvider<TransactionController, AsyncValue<List<Transaction>>>(
       (ref) => TransactionController(ref.read(transactionRepositoryProvider)),
     );
+
+/// Identifies transfers that were formed from a reversible SMS reconciliation.
+/// Manual transfers share the same transaction shape but deliberately have no
+/// reconciliation record and must not offer an unlink action.
+final reconciledTransferProvider = FutureProvider.family<bool, int>(
+  (ref, transactionId) =>
+      AppDatabase.instance.isReconciledTransfer(transactionId),
+);

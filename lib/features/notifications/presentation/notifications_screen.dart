@@ -33,65 +33,77 @@ class NotificationsScreen extends ConsumerWidget {
           message: 'Please try again.',
           onRetry: () => r.invalidate(notificationListProvider),
         ),
-        data: (items) => items.isEmpty
-            ? const AppEmptyState(
-                icon: Icons.notifications_none_rounded,
-                title: 'No notifications yet',
-                message: 'Important account, budget, and review updates will appear here.',
-              )
-            : ListView(
-                padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-                children: items
-                    .map(
-                      (item) => Dismissible(
-                        key: ValueKey(item.id),
-                        direction: DismissDirection.endToStart,
-                        background: const ColoredBox(
-                          color: AppColors.expense,
-                          child: Align(
-                            alignment: Alignment.centerRight,
-                            child: Padding(
-                              padding: EdgeInsets.only(right: 20),
-                              child: Icon(Icons.delete, color: AppColors.onPrimary),
-                            ),
-                          ),
-                        ),
-                        onDismissed: (_) => r
-                            .read(notificationListProvider.notifier)
-                            .delete(item.id!),
-                        child: Card(
-                          margin: const EdgeInsets.only(bottom: 9),
-                          color: item.isRead
-                              ? null
-                              : AppColors.primary.withValues(alpha: .06),
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 14,
-                              vertical: 7,
-                            ),
-                            leading: CircleAvatar(
-                              backgroundColor: AppColors.primary.withValues(
-                                alpha: .12,
-                              ),
-                              child: const Icon(
-                                Icons.notifications_outlined,
-                                color: AppColors.primary,
-                              ),
-                            ),
-                            title: Text(item.title),
-                            subtitle: Text(item.body),
-                            trailing: item.isRead
-                                ? null
-                                : const Icon(Icons.circle, size: 10),
-                            onTap: () => r
-                                .read(notificationListProvider.notifier)
-                                .markRead(item.id!),
-                          ),
-                        ),
+        data: (items) => RefreshIndicator(
+          onRefresh: () => r.read(notificationListProvider.notifier).refresh(),
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
+            children: items.isEmpty
+                ? [
+                    SizedBox(
+                      height: MediaQuery.sizeOf(c).height * .65,
+                      child: const AppEmptyState(
+                        icon: Icons.notifications_none_rounded,
+                        title: 'No notifications yet',
+                        message: 'Important account, budget, and review updates will appear here.',
                       ),
-                    )
-                    .toList(),
-              ),
+                    ),
+                  ]
+                : items
+                      .map(
+                        (item) => Dismissible(
+                          key: ValueKey(item.id),
+                          direction: DismissDirection.endToStart,
+                          background: const ColoredBox(
+                            color: AppColors.expense,
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: Padding(
+                                padding: EdgeInsets.only(right: 20),
+                                child: Icon(
+                                  Icons.delete,
+                                  color: AppColors.onPrimary,
+                                ),
+                              ),
+                            ),
+                          ),
+                          onDismissed: (_) => r
+                              .read(notificationListProvider.notifier)
+                              .delete(item.id!),
+                          child: Card(
+                            margin: const EdgeInsets.only(bottom: 9),
+                            color: item.isRead
+                                ? null
+                                : AppColors.primary.withValues(alpha: .06),
+                            child: ListTile(
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 14,
+                                vertical: 7,
+                              ),
+                              leading: CircleAvatar(
+                                backgroundColor: AppColors.primary.withValues(
+                                  alpha: .12,
+                                ),
+                                child: const Icon(
+                                  Icons.notifications_outlined,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                              title: Text(item.title),
+                              subtitle: Text(item.body),
+                              trailing: item.isRead
+                                  ? null
+                                  : const Icon(Icons.circle, size: 10),
+                              onTap: () => r
+                                  .read(notificationListProvider.notifier)
+                                  .markRead(item.id!),
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+          ),
+        ),
       ),
     );
   }

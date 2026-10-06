@@ -110,7 +110,8 @@ void main() {
     final received = DateTime.utc(2026, 9, 30, 12);
     final candidate = EvcPlusParser().parse(
       sender: 'fixture',
-      message: '[-EVCPLUS-] \$1 ayaad uwareejisay TEST, Tar: 31/02/2026 10:00:00',
+      message:
+          '[-EVCPLUS-] \$1 ayaad uwareejisay TEST, Tar: 31/02/2026 10:00:00',
       receivedAt: received,
     );
 
@@ -122,7 +123,9 @@ void main() {
     const categorization = CategorizationService();
     final category = categorization.suggest(
       merchant: '  Fixture   Counterparty ',
-      merchantRules: const [MerchantRule('fixture counterparty', 'Food & Dining')],
+      merchantRules: const [
+        MerchantRule('fixture counterparty', 'Food & Dining'),
+      ],
       keywordRules: const [],
     );
     final unknown = categorization.suggest(
@@ -145,8 +148,7 @@ void main() {
   test('EVC Plus outgoing fixture is parsed without raw SMS fields', () {
     final candidate = EvcPlusParser().parse(
       sender: '+000000000',
-      message:
-          '[-EVCPLUS-] \$58 ayaad uwareejisay TEST USER (600000000), Tar: 29/09/26 07:36:56, Haraagaagu waa \$0.5.',
+      message: '[-EVCPLUS-] \$58 ayaad uwareejisay TEST USER (600000000), Tar: 29/09/26 07:36:56, Haraagaagu waa \$0.5.',
       receivedAt: DateTime.utc(2026, 9, 29),
     );
     expect(candidate?.provider, 'EVC Plus');
@@ -158,11 +160,33 @@ void main() {
     expect(candidate?.confidence, .92);
   });
 
+  test(
+    'EVC Plus u dirtay outgoing fixture preserves its normalized details',
+    () {
+      final candidate = EvcPlusParser().parse(
+        sender: 'fixture',
+        message: '[-EVCPLUS-] Tixraac: 000000000, \$0.03 ayaad u dirtay CALI   AXMED(2527766766) via Somnet Telecom,Tar: 03/10/26 11:54:15 haraagaagu waa \$0.',
+        receivedAt: DateTime.utc(2026, 10, 3),
+      );
+
+      expect(candidate?.provider, 'EVC Plus');
+      expect(candidate?.type, CandidateType.expense);
+      expect(candidate?.amountMinor, 3);
+      expect(candidate?.merchant, 'CALI AXMED');
+      expect(candidate?.counterpartyPhone, '2527766766');
+      expect(candidate?.reference, '000000000');
+      expect(candidate?.transactionDate, DateTime(2026, 10, 3, 11, 54, 15));
+      expect(
+        candidate?.providerTransactionAt,
+        DateTime(2026, 10, 3, 11, 54, 15),
+      );
+    },
+  );
+
   test('EVC Plus incoming fixture is parsed', () {
     final candidate = EvcPlusParser().parse(
       sender: 'fixture',
-      message:
-          '[-EVCPLUS-] waxaad \$150 ka heshay 0600000000, Tar: 27/09/26 13:09:20 haraagagu waa \$165.',
+      message: '[-EVCPLUS-] waxaad \$150 ka heshay 0600000000, Tar: 27/09/26 13:09:20 haraagagu waa \$165.',
       receivedAt: DateTime.utc(2026, 9, 27),
     );
     expect(candidate?.type, CandidateType.income);
@@ -173,14 +197,12 @@ void main() {
   test('JEEB fixtures support milliseconds and integer/decimal amounts', () {
     final outgoing = JeebParser().parse(
       sender: 'fixture',
-      message:
-          '[-JEEB-] \$0.5 ayaad u dirtay TEST PERSON(610000000),Tar: 29/09/2026 20:41:55:142 haraagaagu waa \$2.98.',
+      message: '[-JEEB-] \$0.5 ayaad u dirtay TEST PERSON(610000000),Tar: 29/09/2026 20:41:55:142 haraagaagu waa \$2.98.',
       receivedAt: DateTime.utc(2026, 9, 29),
     );
     final incoming = JeebParser().parse(
       sender: 'fixture',
-      message:
-          '[-JEEB-] \$3 ayaad ka Heshay 252600000000,29/09/2026 21:21:16 via Local Clearing House, Haraagaagu waa \$3.48.',
+      message: '[-JEEB-] \$3 ayaad ka Heshay 252600000000,29/09/2026 21:21:16 via Local Clearing House, Haraagaagu waa \$3.48.',
       receivedAt: DateTime.utc(2026, 9, 29),
     );
     expect(outgoing?.type, CandidateType.expense);
@@ -200,12 +222,14 @@ void main() {
     ]);
     final provider = registry.parse(
       sender: 'fixture',
-      message: '[-JEEB-] \$1 ayaad u dirtay TEST(600000000),Tar: 29/09/26 10:00:00',
+      message:
+          '[-JEEB-] \$1 ayaad u dirtay TEST(600000000),Tar: 29/09/26 10:00:00',
       receivedAt: DateTime.utc(2026, 9, 29),
     );
     final ordinary = registry.parse(
       sender: 'fixture',
-      message: 'Kulanka wuxuu bilaabanayaa 29/09/26 saacadu markay tahay 10:00.',
+      message:
+          'Kulanka wuxuu bilaabanayaa 29/09/26 saacadu markay tahay 10:00.',
       receivedAt: DateTime.utc(2026, 9, 29),
     );
     expect(provider?.provider, 'JEEB');
@@ -222,14 +246,16 @@ void main() {
     );
     final result = pipeline.process(
       sender: 'fixture',
-      message:
-          '[-EVCPLUS-] \$58 ayaad uwareejisay TEST USER (600000000), Tar: 29/09/26 07:36:56',
+      message: '[-EVCPLUS-] \$58 ayaad uwareejisay TEST USER (600000000), Tar: 29/09/26 07:36:56',
       receivedAt: DateTime.utc(2026, 9, 29),
     );
-    expect(const FinancialMessageDetector().isPotentialFinancialMessage(
-      'fixture',
-      '[-EVCPLUS-] \$58 ayaad uwareejisay TEST USER',
-    ), isTrue);
+    expect(
+      const FinancialMessageDetector().isPotentialFinancialMessage(
+        'fixture',
+        '[-EVCPLUS-] \$58 ayaad uwareejisay TEST USER',
+      ),
+      isTrue,
+    );
     expect(result?.candidate.provider, 'EVC Plus');
     expect(result?.candidate.type, CandidateType.expense);
   });
@@ -244,8 +270,7 @@ void main() {
     );
     final result = pipeline.process(
       sender: 'fixture',
-      message:
-          '[-JEEB-] \$0.5 ayaad u dirtay TEST PERSON(610000000),Tar: 29/09/2026 20:41:55:142',
+      message: '[-JEEB-] \$0.5 ayaad u dirtay TEST PERSON(610000000),Tar: 29/09/2026 20:41:55:142',
       receivedAt: DateTime.utc(2026, 9, 29),
     );
     expect(result?.candidate.provider, 'JEEB');
@@ -256,8 +281,7 @@ void main() {
     final received = DateTime.utc(2026, 9, 30, 8, 0);
     final candidate = JeebParser().parse(
       sender: 'fixture',
-      message:
-          '[- JEEB -] \$1 AYAAD   U   DIRTAY  TEST   PERSON(610000000),Tar: 31/02/2026 20:41:55:142',
+      message: '[- JEEB -] \$1 AYAAD   U   DIRTAY  TEST   PERSON(610000000),Tar: 31/02/2026 20:41:55:142',
       receivedAt: received,
     );
     expect(candidate?.amountMinor, 100);
@@ -266,13 +290,16 @@ void main() {
     expect(candidate?.confidence, .88);
   });
 
-  test('money formatter uses symbols for display while retaining ISO codes', () {
-    MoneyFormatter.configure('USD');
-    expect(MoneyFormatter.currencyCode, 'USD');
-    expect(MoneyFormatter.format(5800), '\$58.00');
-    expect(MoneyFormatter.format(50), '\$0.50');
-    expect(MoneyFormatter.signed(4000, negative: true), '-\$40.00');
-    expect(MoneyFormatter.signed(15000, negative: false), '+\$150.00');
-    MoneyFormatter.configure('KES');
-  });
+  test(
+    'money formatter uses symbols for display while retaining ISO codes',
+    () {
+      MoneyFormatter.configure('USD');
+      expect(MoneyFormatter.currencyCode, 'USD');
+      expect(MoneyFormatter.format(5800), '\$58.00');
+      expect(MoneyFormatter.format(50), '\$0.50');
+      expect(MoneyFormatter.signed(4000, negative: true), '-\$40.00');
+      expect(MoneyFormatter.signed(15000, negative: false), '+\$150.00');
+      MoneyFormatter.configure('KES');
+    },
+  );
 }

@@ -7,6 +7,7 @@ import '../../accounts/providers/account_provider.dart';
 import '../../categories/domain/entities/category.dart';
 import '../../categories/providers/category_provider.dart';
 import '../domain/entities/transaction.dart';
+import 'transaction_presentation.dart';
 
 class TransactionFilterState {
   const TransactionFilterState({
@@ -425,7 +426,7 @@ class _TransactionFiltersScreenState
             child: Row(
               children: [
                 _buildThemeChip(
-                  'Auto',
+                  TransactionSource.smsLive.displayLabel,
                   _source == TransactionSource.smsLive,
                   () => setState(() {
                     _source = _source == TransactionSource.smsLive
@@ -435,7 +436,7 @@ class _TransactionFiltersScreenState
                 ),
                 const SizedBox(width: 8),
                 _buildThemeChip(
-                  'Manual',
+                  TransactionSource.manual.displayLabel,
                   _source == TransactionSource.manual,
                   () => setState(() {
                     _source = _source == TransactionSource.manual
@@ -445,7 +446,7 @@ class _TransactionFiltersScreenState
                 ),
                 const SizedBox(width: 8),
                 _buildThemeChip(
-                  'Imported',
+                  TransactionSource.smsImport.displayLabel,
                   _source == TransactionSource.smsImport,
                   () => setState(() {
                     _source = _source == TransactionSource.smsImport
@@ -455,7 +456,7 @@ class _TransactionFiltersScreenState
                 ),
                 const SizedBox(width: 8),
                 _buildThemeChip(
-                  'Recurring',
+                  TransactionSource.recurring.displayLabel,
                   _source == TransactionSource.recurring,
                   () => setState(() {
                     _source = _source == TransactionSource.recurring

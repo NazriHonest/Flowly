@@ -11,6 +11,7 @@ import '../providers/transaction_provider.dart';
 import 'transaction_details_screen.dart';
 import 'transaction_filters_screen.dart';
 import 'transaction_form_screen.dart';
+import 'transaction_presentation.dart';
 import 'widgets/transaction_card.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -358,26 +359,45 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       data: (items) {
         final filtered = _applyFilters(items, accounts);
         if (filtered.isEmpty) {
-          return AppEmptyState(
-            icon: Icons.receipt_long_outlined,
-            title: _searchController.text.isNotEmpty || _activeFilterCount > 0
-                ? 'No matches found'
-                : 'No transactions yet.',
-            message: _searchController.text.isNotEmpty || _activeFilterCount > 0
-                ? 'Try adjusting your search or filters.'
-                : 'Add one manually, or turn on automatic detection.',
-            actionLabel:
-                _searchController.text.isEmpty && _activeFilterCount == 0
-                ? 'Add transaction'
-                : null,
-            onAction: _searchController.text.isEmpty && _activeFilterCount == 0
-                ? () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const TransactionFormScreen(),
-                    ),
-                  )
-                : null,
+          return RefreshIndicator(
+            onRefresh: () =>
+                ref.read(transactionListProvider.notifier).refresh(),
+            child: ListView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              children: [
+                SizedBox(
+                  height: MediaQuery.sizeOf(context).height * .62,
+                  child: AppEmptyState(
+                    icon: Icons.receipt_long_outlined,
+                    title:
+                        _searchController.text.isNotEmpty ||
+                            _activeFilterCount > 0
+                        ? 'No matches found'
+                        : 'No transactions yet.',
+                    message:
+                        _searchController.text.isNotEmpty ||
+                            _activeFilterCount > 0
+                        ? 'Try adjusting your search or filters.'
+                        : 'Add one manually, or turn on automatic detection.',
+                    actionLabel:
+                        _searchController.text.isEmpty &&
+                            _activeFilterCount == 0
+                        ? 'Add transaction'
+                        : null,
+                    onAction:
+                        _searchController.text.isEmpty &&
+                            _activeFilterCount == 0
+                        ? () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => const TransactionFormScreen(),
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+              ],
+            ),
           );
         }
 
@@ -386,16 +406,23 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           final day = DateTime(t.date.year, t.date.month, t.date.day);
           groups.putIfAbsent(day, () => []).add(t);
         }
+        for (final dayItems in groups.values) {
+          dayItems.sort(compareTransactionsByCreatedAtDescending);
+        }
         final days = groups.keys.toList()..sort((a, b) => b.compareTo(a));
 
-        return ListView.builder(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-          itemCount: days.length,
-          itemBuilder: (context, i) {
-            final day = days[i];
-            final dayItems = groups[day]!;
-            return _buildDayGroup(context, day, dayItems, isDark);
-          },
+        return RefreshIndicator(
+          onRefresh: () => ref.read(transactionListProvider.notifier).refresh(),
+          child: ListView.builder(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+            itemCount: days.length,
+            itemBuilder: (context, i) {
+              final day = days[i];
+              final dayItems = groups[day]!;
+              return _buildDayGroup(context, day, dayItems, isDark);
+            },
+          ),
         );
       },
     );

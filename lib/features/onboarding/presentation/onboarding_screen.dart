@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/formatters/money_formatter.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/widgets/app_widgets.dart';
 import '../../accounts/domain/entities/account.dart';
 import '../../accounts/providers/account_provider.dart';
 import '../../sms_detection/presentation/historical_import_screen.dart';
@@ -21,6 +22,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   int step = 0;
   String currency = 'KES';
   bool automatic = false;
+  bool advancing = false;
   final account = TextEditingController();
   static const steps = <_StepData>[
     _StepData(
@@ -78,7 +80,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('onboardingCompleted', true);
     await prefs.setString('defaultCurrency', currency);
-    await ref.read(automaticDetectionProvider.notifier).setEnabled(automatic);
     MoneyFormatter.configure(currency);
     if (account.text.trim().isNotEmpty) {
       await ref
@@ -142,10 +143,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               const SizedBox(height: 12),
               Text(data.message, textAlign: TextAlign.center),
               const SizedBox(height: 20),
-              if (step == 4) _CurrencyPicker(
-                selected: currency,
-                onChanged: (value) => setState(() => currency = value),
-              ),
+              if (step == 4)
+                _CurrencyPicker(
+                  selected: currency,
+                  onChanged: (value) => setState(() => currency = value),
+                ),
               if (step == 5) const _PrivacyPoints(),
               if (step == 6)
                 SwitchListTile.adaptive(
@@ -193,22 +195,48 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
-                  onPressed: last
+                  onPressed: advancing
+                      ? null
+                      : last
                       ? _finish
                       : () async {
+                          setState(() => advancing = true);
                           if (step == 6 && automatic) {
                             final enabled = await Navigator.push<bool>(
                               context,
                               MaterialPageRoute(
                                 builder: (_) =>
-                                    const SmsPermissionEducationScreen(),
+                                    const SmsPermissionEducationScreen(
+                                      returnOnSuccess: true,
+                                    ),
                               ),
                             );
-                            if (enabled != true && mounted) {
-                              setState(() => automatic = false);
+                            if (!mounted) return;
+                            if (enabled == false) {
+                              await ref
+                                  .read(automaticDetectionProvider.notifier)
+                                  .disableAutomaticDetection();
+                              if (!mounted) return;
+                              automatic = false;
+                            } else if (enabled != true) {
+                              setState(() {
+                                automatic = false;
+                                advancing = false;
+                              });
+                              return;
                             }
+                          } else if (step == 6) {
+                            await ref
+                                .read(automaticDetectionProvider.notifier)
+                                .disableAutomaticDetection();
+                            if (!mounted) return;
                           }
-                          if (mounted) setState(() => step++);
+                          if (mounted) {
+                            setState(() {
+                              step++;
+                              advancing = false;
+                            });
+                          }
                         },
                   child: Text(
                     last
@@ -311,11 +339,13 @@ class _CurrencyPicker extends StatelessWidget {
     runSpacing: 8,
     alignment: WrapAlignment.center,
     children: ['KES', 'USD', 'EUR', 'GBP']
-        .map((code) => ChoiceChip(
-              label: Text(code),
-              selected: selected == code,
-              onSelected: (_) => onChanged(code),
-            ))
+        .map(
+          (code) => FlowlyChoiceChip(
+            label: Text(code),
+            selected: selected == code,
+            onSelected: (_) => onChanged(code),
+          ),
+        )
         .toList(),
   );
 }

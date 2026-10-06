@@ -25,7 +25,12 @@ class AppPageHeader extends StatelessWidget {
 
 /// A consistent elevated-content surface for forms, settings and detail screens.
 class FlowlySurface extends StatelessWidget {
-  const FlowlySurface({super.key, required this.child, this.padding, this.onTap});
+  const FlowlySurface({
+    super.key,
+    required this.child,
+    this.padding,
+    this.onTap,
+  });
   final Widget child;
   final EdgeInsetsGeometry? padding;
   final VoidCallback? onTap;
@@ -35,13 +40,21 @@ class FlowlySurface extends StatelessWidget {
     child: InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
-      child: Padding(padding: padding ?? const EdgeInsets.all(16), child: child),
+      child: Padding(
+        padding: padding ?? const EdgeInsets.all(16),
+        child: child,
+      ),
     ),
   );
 }
 
 class FlowlyIcon extends StatelessWidget {
-  const FlowlyIcon({super.key, required this.icon, this.color = AppColors.primary, this.size = 44});
+  const FlowlyIcon({
+    super.key,
+    required this.icon,
+    this.color = AppColors.primary,
+    this.size = 44,
+  });
   final IconData icon;
   final Color color;
   final double size;
@@ -50,9 +63,49 @@ class FlowlyIcon extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     height: size,
     width: size,
-    decoration: BoxDecoration(color: color.withValues(alpha: .12), borderRadius: BorderRadius.circular(size * .32)),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: .12),
+      borderRadius: BorderRadius.circular(size * .32),
+    ),
     child: Icon(icon, color: color, size: size * .48),
   );
+}
+
+/// Theme-aware selection chip shared by onboarding and compact selectors.
+class FlowlyChoiceChip extends StatelessWidget {
+  const FlowlyChoiceChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final Widget label;
+  final bool selected;
+  final ValueChanged<bool>? onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return ChoiceChip(
+      label: label,
+      selected: selected,
+      onSelected: onSelected,
+      showCheckmark: true,
+      checkmarkColor: scheme.onPrimaryContainer,
+      backgroundColor: scheme.surfaceContainerHighest,
+      selectedColor: scheme.primaryContainer,
+      disabledColor: scheme.surfaceContainerHighest.withValues(alpha: .45),
+      labelStyle: TextStyle(
+        color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+        fontWeight: FontWeight.w700,
+      ),
+      side: BorderSide(
+        color: selected ? scheme.primary : scheme.outlineVariant,
+      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+    );
+  }
 }
 
 class AppEmptyState extends StatelessWidget {
@@ -176,7 +229,10 @@ class FlowlyConfirmDialog extends StatelessWidget {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: background, foregroundColor: foreground),
+          style: FilledButton.styleFrom(
+            backgroundColor: background,
+            foregroundColor: foreground,
+          ),
           onPressed: () => Navigator.pop(context, true),
           child: Text(confirmLabel),
         ),
@@ -210,20 +266,40 @@ class FlowlySection extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(title.toUpperCase(), style: Theme.of(context).textTheme.labelMedium?.copyWith(
-        color: Theme.of(context).colorScheme.onSurfaceVariant, fontWeight: FontWeight.w800, letterSpacing: 1.05)),
-      const SizedBox(height: 8),
-      Card(child: Column(children: children)),
-    ]),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title.toUpperCase(),
+          style: Theme.of(context).textTheme.labelMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.05,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(child: Column(children: children)),
+      ],
+    ),
   );
 }
 
-void showFlowlySnackBar(BuildContext context, String message, {bool error = false}) {
+void showFlowlySnackBar(
+  BuildContext context,
+  String message, {
+  bool error = false,
+}) {
   final scheme = Theme.of(context).colorScheme;
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-    behavior: SnackBarBehavior.floating,
-    backgroundColor: error ? scheme.errorContainer : scheme.inverseSurface,
-    content: Text(message, style: TextStyle(color: error ? scheme.onErrorContainer : scheme.onInverseSurface)),
-  ));
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      behavior: SnackBarBehavior.floating,
+      backgroundColor: error ? scheme.errorContainer : scheme.inverseSurface,
+      content: Text(
+        message,
+        style: TextStyle(
+          color: error ? scheme.onErrorContainer : scheme.onInverseSurface,
+        ),
+      ),
+    ),
+  );
 }
