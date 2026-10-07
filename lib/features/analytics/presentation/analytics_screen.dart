@@ -795,7 +795,7 @@ class _OverviewCard extends StatelessWidget {
 
           end: Alignment.bottomRight,
 
-          colors: [AppColors.primaryDark, AppColors.primary],
+          colors: [AppColors.heroGradientStart, AppColors.heroGradientEnd],
         ),
 
         boxShadow: [
@@ -863,7 +863,7 @@ class _OverviewCard extends StatelessWidget {
             'Net cash flow',
 
             style: TextStyle(
-              color: AppColors.onPrimary.withValues(alpha: .72),
+              color: AppColors.heroTextMuted,
 
               fontSize: 12,
 
@@ -985,11 +985,7 @@ class _OverviewMetric extends StatelessWidget {
 
             overflow: TextOverflow.ellipsis,
 
-            style: TextStyle(
-              color: AppColors.onPrimary.withValues(alpha: .72),
-
-              fontSize: 10,
-            ),
+            style: TextStyle(color: AppColors.heroTextMuted, fontSize: 10),
           ),
 
           const SizedBox(height: 2),
@@ -1168,17 +1164,26 @@ class _CashFlowChart extends StatelessWidget {
                 lineTouchData: LineTouchData(
                   enabled: true,
                   touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (_) => colorScheme.inverseSurface,
                     getTooltipItems: (spots) => spots.map((spot) {
                       final isIncome = spot.barIndex == 0;
                       return LineTooltipItem(
                         '${isIncome ? 'Income' : 'Expenses'}\n${MoneyFormatter.format(spot.y.round())}',
                         TextStyle(
-                          color: isIncome
-                              ? AppColors.income
-                              : AppColors.expense,
+                          color: colorScheme.onInverseSurface,
                           fontSize: 11,
                           fontWeight: FontWeight.w700,
                         ),
+                        children: [
+                          TextSpan(
+                            text: isIncome ? '  ● Income' : '  ● Expense',
+                            style: TextStyle(
+                              color: isIncome
+                                  ? AppColors.income
+                                  : AppColors.expense,
+                            ),
+                          ),
+                        ],
                       );
                     }).toList(),
                   ),
@@ -1400,15 +1405,22 @@ class _SpendingTrendCard extends StatelessWidget {
                 lineTouchData: LineTouchData(
                   enabled: true,
                   touchTooltipData: LineTouchTooltipData(
+                    getTooltipColor: (_) => colorScheme.inverseSurface,
                     getTooltipItems: (spots) => spots
                         .map(
                           (spot) => LineTooltipItem(
                             MoneyFormatter.format(spot.y.round()),
-                            const TextStyle(
-                              color: AppColors.secondary,
+                            TextStyle(
+                              color: colorScheme.onInverseSurface,
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                             ),
+                            children: const [
+                              TextSpan(
+                                text: '  ● Balance',
+                                style: TextStyle(color: AppColors.secondary),
+                              ),
+                            ],
                           ),
                         )
                         .toList(),
@@ -2391,15 +2403,16 @@ class _CategoryDonutChart extends StatelessWidget {
                 final index = pair.key;
                 final entry = pair.value;
                 final percentage = total <= 0 ? 0.0 : entry.value / total * 100;
+                final segmentColor = _chartColors[index % _chartColors.length];
 
                 return PieChartSectionData(
                   value: entry.value.toDouble(),
-                  color: _chartColors[index % _chartColors.length],
+                  color: segmentColor,
                   radius: 27,
                   showTitle: percentage >= 5,
                   title: '${percentage.round()}%',
-                  titleStyle: const TextStyle(
-                    color: Colors.white,
+                  titleStyle: TextStyle(
+                    color: AppColors.foregroundOn(segmentColor),
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),

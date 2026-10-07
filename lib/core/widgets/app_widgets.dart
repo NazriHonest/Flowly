@@ -116,11 +116,14 @@ class AppEmptyState extends StatelessWidget {
     this.title,
     this.actionLabel,
     this.onAction,
+    this.iconColor,
+    this.iconBackgroundColor,
   });
   final IconData icon;
   final String message;
   final String? title, actionLabel;
   final VoidCallback? onAction;
+  final Color? iconColor, iconBackgroundColor;
   @override
   Widget build(BuildContext c) => Center(
     child: Padding(
@@ -132,10 +135,12 @@ class AppEmptyState extends StatelessWidget {
             width: 76,
             height: 76,
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: .12),
+              color:
+                  iconBackgroundColor ??
+                  AppColors.primary.withValues(alpha: .12),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 34, color: AppColors.primary),
+            child: Icon(icon, size: 34, color: iconColor ?? AppColors.primary),
           ),
           const SizedBox(height: 18),
           if (title != null)
@@ -171,13 +176,18 @@ class AppErrorState extends StatelessWidget {
   final String title, message;
   final VoidCallback onRetry;
   @override
-  Widget build(BuildContext context) => AppEmptyState(
-    icon: Icons.error_outline_rounded,
-    title: title,
-    message: message,
-    actionLabel: 'Try Again',
-    onAction: onRetry,
-  );
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return AppEmptyState(
+      icon: Icons.error_outline_rounded,
+      title: title,
+      message: message,
+      actionLabel: 'Try Again',
+      onAction: onRetry,
+      iconColor: colors.onErrorContainer,
+      iconBackgroundColor: colors.errorContainer,
+    );
+  }
 }
 
 class AppLoadingList extends StatelessWidget {

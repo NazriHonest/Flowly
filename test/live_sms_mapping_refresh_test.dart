@@ -6,6 +6,7 @@ import 'package:flowly/features/accounts/domain/entities/account.dart';
 import 'package:flowly/features/sms_detection/data/automatic_transaction_processor.dart';
 import 'package:flowly/features/sms_detection/data/sms_event_bridge.dart';
 import 'package:flowly/features/sms_detection/domain/entities/sms_provider.dart';
+import 'package:flowly/features/sms_detection/domain/entities/sms_processing_outcome.dart';
 import 'package:flowly/features/sms_detection/domain/services/financial_sms_parser_registry.dart';
 import 'package:flowly/features/sms_detection/domain/services/financial_sms_pipeline.dart';
 import 'package:flowly/features/sms_detection/parsers/evc_plus_parser.dart';
@@ -62,7 +63,7 @@ void main() {
       final provider = (await database.smsProviders()).single;
       await database.setProviderAccountMapping(provider.id!, account.id!);
 
-      final saved = await processor.handle(
+      final outcome = await processor.handle(
         SmsEvent(
           sender: 'fixture',
           body: '[-JEEB-] \$3 ayaad ka Heshay 252600000000,29/09/2026 21:21:16 via Local Clearing House, Haraagaagu waa \$3.48.',
@@ -70,7 +71,7 @@ void main() {
         ),
       );
 
-      expect(saved, isTrue);
+      expect(outcome.disposition, SmsProcessingDisposition.persisted);
       expect((await database.transactions()).single.accountId, account.id);
     },
   );

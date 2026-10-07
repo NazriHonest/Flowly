@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme/app_theme.dart';
 import '../core/theme/theme_provider.dart';
 import '../features/sms_detection/providers/sms_live_provider.dart';
+import '../features/sms_detection/providers/automatic_detection_provider.dart';
+import '../features/transactions/providers/transaction_provider.dart';
+import '../features/transactions/providers/transfer_candidate_provider.dart';
 import 'router.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/security/data/security_service.dart';
@@ -53,7 +57,17 @@ class _FlowlyAppState extends ConsumerState<FlowlyApp>
       backgroundedAt ??= DateTime.now();
       return;
     }
-    if (state == AppLifecycleState.resumed) _evaluateResumeLock();
+    if (state == AppLifecycleState.resumed) _handleResume();
+  }
+
+  Future<void> _handleResume() async {
+    await _evaluateResumeLock();
+    final enabled = await ref
+        .read(automaticDetectionProvider.notifier)
+        .reconcileOnResume();
+    if (!enabled) return;
+    await ref.read(transactionListProvider.notifier).refresh();
+    await ref.read(pendingSmsTransferListProvider.notifier).refresh();
   }
 
   Future<void> _evaluateResumeLock() async {
@@ -76,6 +90,23 @@ class _FlowlyAppState extends ConsumerState<FlowlyApp>
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ref.watch(themeModeProvider),
+      builder: (context, child) {
+        final theme = Theme.of(context);
+        final dark = theme.brightness == Brightness.dark;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
+            statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+            systemNavigationBarColor: theme.scaffoldBackgroundColor,
+            systemNavigationBarIconBrightness: dark
+                ? Brightness.light
+                : Brightness.dark,
+            systemNavigationBarDividerColor: Colors.transparent,
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: completed == null
           ? const _FlowlySplash()
           : completed!
@@ -99,27 +130,52 @@ class _FlowlySplash extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [AppColors.primaryDark, AppColors.primary],
+          colors: [AppColors.heroGradientStart, AppColors.heroGradientEnd],
         ),
       ),
       child: Center(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-            width: 74,
-            height: 74,
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: .16),
-              borderRadius: BorderRadius.circular(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 74,
+              height: 74,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: .16),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: const Icon(
+                Icons.account_balance_wallet_rounded,
+                color: Colors.white,
+                size: 36,
+              ),
             ),
-            child: const Icon(Icons.account_balance_wallet_rounded, color: Colors.white, size: 36),
-          ),
-          const SizedBox(height: 18),
-          const Text('Flowly', style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w800, letterSpacing: -.6)),
-          const SizedBox(height: 6),
-          const Text('Money, made clear', style: TextStyle(color: Colors.white70)),
-          const SizedBox(height: 34),
-          const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5)),
-        ]),
+            const SizedBox(height: 18),
+            const Text(
+              'Flowly',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -.6,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Money, made clear',
+              style: TextStyle(color: AppColors.heroTextMuted),
+            ),
+            const SizedBox(height: 34),
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                color: Colors.white,
+                strokeWidth: 2.5,
+              ),
+            ),
+          ],
+        ),
       ),
     ),
   );

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/theme/app_colors.dart';
 import '../../accounts/domain/entities/account.dart';
 import '../../accounts/providers/account_provider.dart';
 import '../../categories/domain/entities/category.dart';
@@ -173,18 +172,14 @@ class _TransactionFiltersScreenState
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textPrimary = isDark
-        ? AppColors.darkTextPrimary
-        : AppColors.lightTextPrimary;
-    final textSecondary = isDark
-        ? AppColors.darkTextSecondary
-        : AppColors.lightTextSecondary;
-    final surfaceColor = isDark ? AppColors.darkSurface : Colors.white;
-    final borderColor = isDark ? AppColors.darkBorder : const Color(0xFFCAD7D3);
-    final backgroundColor = isDark
-        ? AppColors.darkBackground
-        : AppColors.lightBackground;
+    final textPrimary = colors.onSurface;
+    final textSecondary = colors.onSurfaceVariant;
+    final surfaceColor = colors.surface;
+    final borderColor = colors.outlineVariant;
+    final backgroundColor = theme.scaffoldBackgroundColor;
 
     final accounts = ref.watch(accountListProvider).value ?? [];
     final categories = ref.watch(categoryListProvider).value ?? [];
@@ -223,7 +218,7 @@ class _TransactionFiltersScreenState
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
+                  color: colors.primary,
                 ),
               ),
           ],
@@ -231,10 +226,10 @@ class _TransactionFiltersScreenState
         actions: [
           TextButton(
             onPressed: _clearAll,
-            child: const Text(
+            child: Text(
               'Clear All',
               style: TextStyle(
-                color: AppColors.primary,
+                color: colors.primary,
                 fontWeight: FontWeight.w700,
                 fontSize: 14,
               ),
@@ -248,19 +243,15 @@ class _TransactionFiltersScreenState
           padding: const EdgeInsets.fromLTRB(20, 10, 20, 16),
           decoration: BoxDecoration(
             color: backgroundColor,
-            border: Border(
-              top: BorderSide(
-                color: isDark ? AppColors.darkBorder : const Color(0xFFE2ECE9),
-              ),
-            ),
+            border: Border(top: BorderSide(color: colors.outlineVariant)),
           ),
           child: SizedBox(
             height: 52,
             child: FilledButton(
               onPressed: _applyAndClose,
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                backgroundColor: colors.primary,
+                foregroundColor: colors.onPrimary,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                 ),
@@ -552,17 +543,12 @@ class _TransactionFiltersScreenState
   }
 
   Widget _buildThemeChip(String label, bool isSelected, VoidCallback onTap) {
+    final colors = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primary = AppColors.primary;
-    final bg = isSelected
-        ? primary
-        : (isDark ? const Color(0xFF142421) : Colors.white);
-    final borderColor = isSelected
-        ? primary
-        : (isDark ? const Color(0xFF2D4540) : const Color(0xFFCAD7D3));
-    final textColor = isSelected
-        ? Colors.white
-        : (isDark ? const Color(0xFFD4E2DE) : const Color(0xFF1E2E2B));
+    final primary = colors.primary;
+    final bg = isSelected ? primary : colors.surface;
+    final borderColor = isSelected ? primary : colors.outlineVariant;
+    final textColor = isSelected ? colors.onPrimary : colors.onSurface;
 
     return Material(
       color: Colors.transparent,
@@ -643,9 +629,7 @@ class _TransactionFiltersScreenState
               Icon(
                 icon,
                 size: 20,
-                color: isDark
-                    ? const Color(0xFF9EBFB8)
-                    : const Color(0xFF4A635D),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -661,9 +645,7 @@ class _TransactionFiltersScreenState
               ),
               Icon(
                 Icons.keyboard_arrow_down_rounded,
-                color: isDark
-                    ? const Color(0xFF9EBFB8)
-                    : const Color(0xFF4A635D),
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
                 size: 22,
               ),
             ],
@@ -714,7 +696,7 @@ class _TransactionFiltersScreenState
           ),
           hintText: hint,
           hintStyle: TextStyle(
-            color: isDark ? const Color(0xFF5E7974) : const Color(0xFF94A3B8),
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
           ),
           border: InputBorder.none,
           enabledBorder: InputBorder.none,
@@ -748,11 +730,9 @@ class _TransactionFiltersScreenState
   }
 
   void _openAccountsSheet(BuildContext context, List<Account> accounts) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppColors.darkSurface : Colors.white;
-    final textPrimary = isDark
-        ? AppColors.darkTextPrimary
-        : AppColors.lightTextPrimary;
+    final colors = Theme.of(context).colorScheme;
+    final surface = colors.surface;
+    final textPrimary = colors.onSurface;
 
     showModalBottomSheet<void>(
       context: context,
@@ -802,20 +782,15 @@ class _TransactionFiltersScreenState
                             _selectedAccountIds.length == accounts.length
                                 ? 'Deselect All'
                                 : 'Select All',
-                            style: const TextStyle(
-                              color: AppColors.primary,
+                            style: TextStyle(
+                              color: colors.primary,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                         ),
                       ],
                     ),
-                    Divider(
-                      height: 16,
-                      color: isDark
-                          ? AppColors.darkBorder
-                          : const Color(0xFFE2ECE9),
-                    ),
+                    Divider(height: 16, color: colors.outlineVariant),
                     ConstrainedBox(
                       constraints: BoxConstraints(
                         maxHeight: MediaQuery.sizeOf(context).height * 0.45,
@@ -841,12 +816,10 @@ class _TransactionFiltersScreenState
                               account.type.toUpperCase(),
                               style: TextStyle(
                                 fontSize: 11,
-                                color: isDark
-                                    ? AppColors.darkTextSecondary
-                                    : AppColors.lightTextSecondary,
+                                color: colors.onSurfaceVariant,
                               ),
                             ),
-                            activeColor: AppColors.primary,
+                            activeColor: colors.primary,
                             value: isSelected,
                             onChanged: (checked) {
                               if (account.id == null) return;
@@ -870,7 +843,8 @@ class _TransactionFiltersScreenState
                       height: 48,
                       child: FilledButton(
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
+                          backgroundColor: colors.primary,
+                          foregroundColor: colors.onPrimary,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -890,11 +864,9 @@ class _TransactionFiltersScreenState
   }
 
   void _openCategoriesSheet(BuildContext context, List<Category> categories) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final surface = isDark ? AppColors.darkSurface : Colors.white;
-    final textPrimary = isDark
-        ? AppColors.darkTextPrimary
-        : AppColors.lightTextPrimary;
+    final colors = Theme.of(context).colorScheme;
+    final surface = colors.surface;
+    final textPrimary = colors.onSurface;
 
     showModalBottomSheet<void>(
       context: context,
@@ -954,8 +926,8 @@ class _TransactionFiltersScreenState
                             _selectedCategories.length == categories.length
                                 ? 'Deselect All'
                                 : 'Select All',
-                            style: const TextStyle(
-                              color: AppColors.primary,
+                            style: TextStyle(
+                              color: colors.primary,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
@@ -975,12 +947,7 @@ class _TransactionFiltersScreenState
                         ),
                       ),
                     ),
-                    Divider(
-                      height: 16,
-                      color: isDark
-                          ? AppColors.darkBorder
-                          : const Color(0xFFE2ECE9),
-                    ),
+                    Divider(height: 16, color: colors.outlineVariant),
                     ConstrainedBox(
                       constraints: BoxConstraints(
                         maxHeight: MediaQuery.sizeOf(context).height * 0.4,
@@ -1015,7 +982,7 @@ class _TransactionFiltersScreenState
                                 color: textPrimary,
                               ),
                             ),
-                            activeColor: AppColors.primary,
+                            activeColor: colors.primary,
                             value: isSelected,
                             onChanged: (checked) {
                               setModalState(() {
@@ -1038,7 +1005,8 @@ class _TransactionFiltersScreenState
                       height: 48,
                       child: FilledButton(
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.primary,
+                          backgroundColor: colors.primary,
+                          foregroundColor: colors.onPrimary,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),

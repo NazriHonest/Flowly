@@ -4,15 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/formatters/money_formatter.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
-import '../../accounts/providers/account_provider.dart';
 import '../../accounts/domain/services/account_balance_calculator.dart';
+import '../../accounts/providers/account_provider.dart';
 import '../../budgets/providers/budget_provider.dart';
 import '../../transactions/domain/entities/transaction.dart';
-import '../../transactions/providers/transaction_provider.dart';
 import '../../transactions/presentation/transaction_details_screen.dart';
 import '../../transactions/presentation/transaction_presentation.dart';
 import '../../transactions/presentation/transactions_screen.dart';
 import '../../transactions/presentation/widgets/transaction_card.dart';
+import '../../transactions/providers/transaction_provider.dart';
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -24,33 +24,7 @@ class DashboardScreen extends ConsumerWidget {
     final budgets = ref.watch(budgetListProvider).value ?? [];
 
     return Scaffold(
-      appBar: AppBar(
-        titleSpacing: 20,
-        title: const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Good morning',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
-            ),
-            SizedBox(height: 2),
-            Text(
-              'Here is your financial overview',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w400),
-            ),
-          ],
-        ),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 12),
-            child: IconButton.filledTonal(
-              tooltip: 'Notifications',
-              onPressed: () {},
-              icon: const Icon(Icons.notifications_none_rounded),
-            ),
-          ),
-        ],
-      ),
+      appBar: AppBar(titleSpacing: 20, title: const _DashboardHeader()),
       body: transactionState.when(
         loading: () => const AppLoadingList(count: 5),
         error: (error, _) => AppErrorState(
@@ -66,6 +40,7 @@ class DashboardScreen extends ConsumerWidget {
           final now = DateTime.now();
           final monthStart = DateTime(now.year, now.month);
           final nextMonthStart = DateTime(now.year, now.month + 1);
+
           final monthly = confirmed
               .where(
                 (item) =>
@@ -73,7 +48,9 @@ class DashboardScreen extends ConsumerWidget {
                     item.date.isBefore(nextMonthStart),
               )
               .toList();
+
           final income = _sum(monthly, TransactionType.income);
+
           final expenses = _sum(monthly, TransactionType.expense);
 
           final balance = accounts.fold<int>(
@@ -83,6 +60,7 @@ class DashboardScreen extends ConsumerWidget {
           );
 
           final categories = <String, int>{};
+
           for (final item in monthly.where(
             (item) => item.type == TransactionType.expense,
           )) {
@@ -96,37 +74,43 @@ class DashboardScreen extends ConsumerWidget {
           final reviewCount = items
               .where((item) => item.status == ReviewStatus.needsReview)
               .length;
-          final recentTransactions = items
-              .where((item) => item.status != ReviewStatus.ignored)
-              .toList()
-            ..sort(compareTransactionsByCreatedAtDescending);
+
+          final recentTransactions =
+              items
+                  .where((item) => item.status != ReviewStatus.ignored)
+                  .toList()
+                ..sort(compareTransactionsByCreatedAtDescending);
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
               _BalanceHero(
                 balance: balance,
                 income: income,
                 expenses: expenses,
               ),
-              const SizedBox(height: 24),
 
               if (reviewCount > 0) ...[
+                const SizedBox(height: 16),
                 _ReviewBanner(count: reviewCount),
-                const SizedBox(height: 24),
               ],
+
+              const SizedBox(height: 28),
 
               _SectionHeader(
                 title: 'Budget progress',
                 subtitle: budgets.isEmpty
-                    ? null
+                    ? 'Stay on top of your spending limits'
                     : '${budgets.length} active ${budgets.length == 1 ? 'budget' : 'budgets'}',
               ),
-              const SizedBox(height: 10),
+
+              const SizedBox(height: 12),
+
               if (budgets.isEmpty)
                 const _InlineEmpty(
                   icon: Icons.account_balance_wallet_outlined,
-                  message: 'Create a budget to keep spending on track.',
+                  title: 'No active budgets',
+                  message: 'Create a budget to keep your spending on track.',
                 )
               else
                 ...budgets.take(3).map((budget) {
@@ -153,18 +137,22 @@ class DashboardScreen extends ConsumerWidget {
                   );
                 }),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 20),
+
               _SectionHeader(
-                title: 'Top categories',
+                title: 'Top spending',
                 subtitle: topCategories.isEmpty
-                    ? null
-                    : 'Where your money is going',
+                    ? 'Your spending by category'
+                    : 'This month',
               ),
-              const SizedBox(height: 10),
+
+              const SizedBox(height: 12),
+
               if (topCategories.isEmpty)
                 const _InlineEmpty(
                   icon: Icons.donut_small_rounded,
-                  message: 'Your category breakdown will appear here.',
+                  title: 'No spending yet',
+                  message: 'Your top spending categories will appear here.',
                 )
               else
                 _TopCategoriesPanel(
@@ -172,22 +160,28 @@ class DashboardScreen extends ConsumerWidget {
                   total: expenses,
                 ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 28),
 
-              // Keep the Recent Transactions section intentionally simple.
-              // It uses the same shared TransactionCard as TransactionsScreen.
               _SectionHeader(
                 title: 'Recent transactions',
-                action: 'See all',
-                onAction: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const TransactionsScreen()),
-                ),
+                subtitle: recentTransactions.isEmpty ? null : 'Latest activity',
+                action: recentTransactions.isEmpty ? null : 'See all',
+                onAction: recentTransactions.isEmpty
+                    ? null
+                    : () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const TransactionsScreen(),
+                        ),
+                      ),
               ),
-              const SizedBox(height: 4),
+
+              const SizedBox(height: 10),
+
               if (recentTransactions.isEmpty)
                 const _InlineEmpty(
                   icon: Icons.receipt_long_outlined,
-                  message: 'No transactions yet. Add your first transaction to start tracking.',
+                  title: 'No transactions yet',
+                  message: 'Add your first transaction to start tracking your finances.',
                 )
               else
                 Column(
@@ -214,9 +208,54 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-int _sum(List<Transaction> transactions, TransactionType type) => transactions
-    .where((item) => item.type == type)
-    .fold<int>(0, (sum, item) => sum + item.amountMinor);
+int _sum(List<Transaction> transactions, TransactionType type) {
+  return transactions
+      .where((item) => item.type == type)
+      .fold<int>(0, (sum, item) => sum + item.amountMinor);
+}
+
+class _DashboardHeader extends StatelessWidget {
+  const _DashboardHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          _greeting(),
+          style: theme.textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.3,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          'Your financial overview',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _greeting() {
+    final hour = DateTime.now().hour;
+
+    if (hour < 12) {
+      return 'Good morning';
+    }
+
+    if (hour < 17) {
+      return 'Good afternoon';
+    }
+
+    return 'Good evening';
+  }
+}
 
 class _BalanceHero extends StatelessWidget {
   const _BalanceHero({
@@ -238,11 +277,11 @@ class _BalanceHero extends StatelessWidget {
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [AppColors.primaryDark, AppColors.primary],
+          colors: [AppColors.heroGradientStart, AppColors.heroGradientEnd],
         ),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: .18),
+            color: AppColors.primary.withValues(alpha: 0.18),
             blurRadius: 24,
             offset: const Offset(0, 10),
           ),
@@ -254,57 +293,89 @@ class _BalanceHero extends StatelessWidget {
           Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
+                width: 40,
+                height: 40,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: AppColors.onPrimary.withValues(alpha: .12),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.onPrimary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(13),
                 ),
                 child: const Icon(
                   Icons.account_balance_wallet_outlined,
                   color: AppColors.onPrimary,
-                  size: 20,
+                  size: 21,
                 ),
               ),
               const SizedBox(width: 12),
               const Expanded(
-                child: Text(
-                  'Total balance',
-                  style: TextStyle(
-                    color: AppColors.heroTextMuted,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total balance',
+                      style: TextStyle(
+                        color: AppColors.heroTextMuted,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Across all accounts',
+                      style: TextStyle(
+                        color: AppColors.heroTextMuted,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              Icon(
-                Icons.more_horiz_rounded,
-                color: AppColors.onPrimary.withValues(alpha: .72),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Text(
-            MoneyFormatter.format(balance),
-            style: const TextStyle(
-              color: AppColors.onPrimary,
-              fontSize: 32,
-              height: 1.1,
-              fontWeight: FontWeight.w800,
-              letterSpacing: -.6,
+
+          const SizedBox(height: 18),
+
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              MoneyFormatter.format(balance),
+              style: const TextStyle(
+                color: AppColors.onPrimary,
+                fontSize: 34,
+                height: 1.05,
+                fontWeight: FontWeight.w800,
+                letterSpacing: -0.8,
+              ),
             ),
           ),
-          const SizedBox(height: 22),
+
+          const SizedBox(height: 24),
+
+          const Text(
+            'THIS MONTH',
+            style: TextStyle(
+              color: AppColors.heroTextMuted,
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.8,
+            ),
+          ),
+
+          const SizedBox(height: 9),
+
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
             decoration: BoxDecoration(
-              color: AppColors.onPrimary.withValues(alpha: .10),
+              color: AppColors.onPrimary.withValues(alpha: 0.10),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                color: AppColors.onPrimary.withValues(alpha: .10),
+                color: AppColors.onPrimary.withValues(alpha: 0.10),
               ),
             ),
             child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
                 Expanded(
                   child: _HeroMetric(
@@ -314,7 +385,8 @@ class _BalanceHero extends StatelessWidget {
                     color: AppColors.heroIncome,
                   ),
                 ),
-                Container(width: 1, height: 38, color: AppColors.heroDivider),
+                Container(width: 1, height: 42, color: AppColors.heroDivider),
+                const SizedBox(width: 24),
                 Expanded(
                   child: _HeroMetric(
                     icon: Icons.north_east_rounded,
@@ -361,12 +433,12 @@ class _HeroMetric extends StatelessWidget {
                 style: TextStyle(
                   color: color,
                   fontSize: 11,
-                  fontWeight: FontWeight.w600,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 5),
           Text(
             MoneyFormatter.format(value),
             maxLines: 1,
@@ -390,28 +462,30 @@ class _ReviewBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
       decoration: BoxDecoration(
-        color: AppColors.warning.withValues(alpha: .10),
+        color: AppColors.warning.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.warning.withValues(alpha: .22)),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.22)),
       ),
       child: Row(
         children: [
           Container(
-            width: 38,
-            height: 38,
+            width: 42,
+            height: 42,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.warning.withValues(alpha: .14),
-              borderRadius: BorderRadius.circular(12),
+              color: AppColors.warning.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(13),
             ),
             child: const Icon(
               Icons.rule_rounded,
               color: AppColors.warning,
-              size: 20,
+              size: 21,
             ),
           ),
           const SizedBox(width: 12),
@@ -421,26 +495,26 @@ class _ReviewBanner extends StatelessWidget {
               children: [
                 Text(
                   '$count ${count == 1 ? 'transaction needs' : 'transactions need'} review',
-                  style: TextStyle(
-                    color: colorScheme.onSurface,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: colors.onSurface,
                     fontWeight: FontWeight.w700,
-                    fontSize: 13,
                   ),
                 ),
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   'Check uncertain automatic transactions.',
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 11,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
               ],
             ),
           ),
-          Icon(
-            Icons.chevron_right_rounded,
-            color: colorScheme.onSurfaceVariant,
+          const SizedBox(width: 8),
+          const Icon(
+            Icons.info_outline_rounded,
+            color: AppColors.warning,
+            size: 20,
           ),
         ],
       ),
@@ -463,8 +537,8 @@ class _SectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.end,
@@ -475,24 +549,40 @@ class _SectionHeader extends StatelessWidget {
             children: [
               Text(
                 title,
-                style: textTheme.titleMedium?.copyWith(
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: colors.onSurface,
                   fontWeight: FontWeight.w800,
+                  letterSpacing: -0.2,
                 ),
               ),
               if (subtitle != null) ...[
-                const SizedBox(height: 2),
+                const SizedBox(height: 3),
                 Text(
                   subtitle!,
-                  style: textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
                   ),
                 ),
               ],
             ],
           ),
         ),
-        if (action != null)
-          TextButton(onPressed: onAction, child: Text(action!)),
+        if (action != null && onAction != null)
+          TextButton(
+            onPressed: onAction,
+            style: TextButton.styleFrom(
+              minimumSize: const Size(48, 40),
+              padding: const EdgeInsets.symmetric(horizontal: 10),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(action!),
+                const SizedBox(width: 2),
+                const Icon(Icons.chevron_right_rounded, size: 18),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -513,38 +603,47 @@ class _BudgetProgressTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final exceeded = progress >= 1;
-    final progressColor = exceeded ? AppColors.expense : AppColors.primary;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
+    final progressColor = progress >= 1
+        ? AppColors.expense
+        : progress >= 0.8
+        ? AppColors.warning
+        : AppColors.primary;
+
     final percentage = (progress * 100).clamp(0, 999).round();
+
+    final remaining = total - spent;
 
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: .65),
-        ),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         children: [
           Row(
             children: [
               Container(
-                width: 40,
-                height: 40,
+                width: 42,
+                height: 42,
+                alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: progressColor.withValues(alpha: .10),
-                  borderRadius: BorderRadius.circular(12),
+                  color: progressColor.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(13),
                 ),
                 child: Icon(
                   Icons.savings_outlined,
                   color: progressColor,
-                  size: 20,
+                  size: 21,
                 ),
               ),
+
               const SizedBox(width: 12),
+
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -553,49 +652,78 @@ class _BudgetProgressTile extends StatelessWidget {
                       name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         fontWeight: FontWeight.w700,
-                        fontSize: 14,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       '${MoneyFormatter.format(spent)} of ${MoneyFormatter.format(total)}',
-                      style: TextStyle(
-                        color: colorScheme.onSurfaceVariant,
-                        fontSize: 11,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colors.onSurfaceVariant,
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
+
+              const SizedBox(width: 10),
+
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
-                  color: progressColor.withValues(alpha: .10),
+                  color: progressColor.withValues(alpha: 0.10),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   '$percentage%',
-                  style: TextStyle(
+                  style: theme.textTheme.labelMedium?.copyWith(
                     color: progressColor,
-                    fontSize: 11,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 13),
+
+          const SizedBox(height: 14),
+
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
               value: progress.clamp(0.0, 1.0),
               minHeight: 7,
-              backgroundColor: colorScheme.surfaceContainerHighest,
+              backgroundColor: colors.surfaceContainerHighest,
               color: progressColor,
             ),
+          ),
+
+          const SizedBox(height: 9),
+
+          Row(
+            children: [
+              Icon(
+                progress >= 1
+                    ? Icons.warning_amber_rounded
+                    : Icons.account_balance_wallet_outlined,
+                size: 14,
+                color: progressColor,
+              ),
+              const SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  progress >= 1
+                      ? '${MoneyFormatter.format(spent - total)} over budget'
+                      : '${MoneyFormatter.format(remaining)} remaining',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: progress >= 1
+                        ? AppColors.expense
+                        : colors.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -611,16 +739,14 @@ class _TopCategoriesPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final colors = Theme.of(context).colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: .65),
-        ),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Column(
         children: [
@@ -633,7 +759,8 @@ class _TopCategoriesPanel extends StatelessWidget {
             if (index != entries.length - 1)
               Divider(
                 height: 1,
-                color: colorScheme.outlineVariant.withValues(alpha: .55),
+                indent: 54,
+                color: colors.outlineVariant.withValues(alpha: 0.7),
               ),
           ],
         ],
@@ -655,24 +782,31 @@ class _CategoryRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
     final progress = total == 0 ? 0.0 : value / total;
+
     final visual = _categoryVisual(name);
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 13),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 42,
             height: 42,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: visual.color.withValues(alpha: .12),
+              color: visual.color.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(13),
             ),
             child: Icon(visual.icon, size: 20, color: visual.color),
           ),
+
           const SizedBox(width: 12),
+
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -684,37 +818,39 @@ class _CategoryRow extends StatelessWidget {
                         name,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 13,
+                        style: theme.textTheme.bodyMedium?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 10),
                     Text(
                       MoneyFormatter.format(value),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+
+                const SizedBox(height: 9),
+
                 ClipRRect(
                   borderRadius: BorderRadius.circular(999),
                   child: LinearProgressIndicator(
                     value: progress.clamp(0.0, 1.0),
-                    minHeight: 5,
-                    backgroundColor: colorScheme.surfaceContainerHighest,
+                    minHeight: 6,
+                    backgroundColor: colors.surfaceContainerHighest,
                     color: visual.color,
                   ),
                 ),
-                const SizedBox(height: 5),
+
+                const SizedBox(height: 6),
+
                 Text(
-                  '${(progress * 100).round()}% of expenses',
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
+                  '${(progress * 100).round()}% of this month’s expenses',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
                     fontSize: 10,
                     fontWeight: FontWeight.w500,
                   ),
@@ -729,41 +865,62 @@ class _CategoryRow extends StatelessWidget {
 }
 
 class _InlineEmpty extends StatelessWidget {
-  const _InlineEmpty({required this.icon, required this.message});
+  const _InlineEmpty({
+    required this.icon,
+    required this.title,
+    required this.message,
+  });
 
   final IconData icon;
+  final String title;
   final String message;
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.surface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: .65),
-        ),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Row(
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: .10),
-              borderRadius: BorderRadius.circular(12),
+              color: AppColors.primary.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
             ),
-            child: Icon(icon, color: AppColors.primary, size: 20),
+            child: Icon(icon, color: AppColors.primary, size: 21),
           ),
-          const SizedBox(width: 12),
+
+          const SizedBox(width: 13),
+
           Expanded(
-            child: Text(
-              message,
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.35),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  message,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: colors.onSurfaceVariant,
+                    height: 1.35,
+                  ),
+                ),
+              ],
             ),
           ),
         ],

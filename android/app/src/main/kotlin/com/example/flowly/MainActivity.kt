@@ -3,9 +3,7 @@ package com.example.flowly
 import android.Manifest
 import android.content.pm.PackageManager
 import android.provider.Telephony
-import android.content.Intent
 import android.net.Uri
-import android.util.Log
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -14,13 +12,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.EventChannel
 
 class MainActivity : FlutterActivity() {
-    companion object {
-        const val EXTRA_SMS_SENDER = "flowly_sms_sender"
-        const val EXTRA_SMS_BODY = "flowly_sms_body"
-        const val EXTRA_SMS_RECEIVED_AT = "flowly_sms_received_at"
-    }
     private val channelName = "com.flowly/sms_permissions"
-    private val smsLogTag = "FlowlySMS"
     private val requestCode = 4801
     private var pendingResult: MethodChannel.Result? = null
 
@@ -32,41 +24,33 @@ class MainActivity : FlutterActivity() {
                 "request" -> requestSmsPermission(result)
                 "historical" -> readHistoricalSms(result)
                 "openSettings" -> {
-                    startActivity(Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                    startActivity(android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
                     result.success(null)
                 }
+                "automaticDetectionState" -> {
+                    try {
+                        val arguments = call.arguments as? Map<*, *>
+                        val legacy = arguments?.get("legacyEnabled") as? Boolean
+                        result.success(AutomaticDetectionStore.restore(this, legacy))
+                    } catch (_: Throwable) {
+                        result.error("automatic_detection_state_failed", "Could not restore automatic detection", null)
+                    }
+                }
                 "setAutomaticDetection" -> {
-                    getSharedPreferences("flowly_sms", MODE_PRIVATE).edit()
-                        .putBoolean("enabled", call.arguments as? Boolean ?: false)
-                        .apply()
-                    result.success(null)
+                    try {
+                        val enabled = call.arguments as? Boolean ?: false
+                        AutomaticDetectionStore.setEnabled(this, enabled)
+                        if (enabled) SmsWorkScheduler.enqueue(this)
+                        result.success(null)
+                    } catch (_: Throwable) {
+                        result.error("automatic_detection_update_failed", "Could not update automatic detection", null)
+                    }
                 }
                 else -> result.notImplemented()
             }
         }
         EventChannel(flutterEngine.dartExecutor.binaryMessenger, "com.flowly/sms_events")
             .setStreamHandler(SmsEventBridge)
-        publishIntentSms(intent)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-        publishIntentSms(intent)
-    }
-
-    private fun publishIntentSms(intent: Intent?) {
-        val sender = intent?.getStringExtra(EXTRA_SMS_SENDER) ?: return
-        val body = intent.getStringExtra(EXTRA_SMS_BODY) ?: return
-        val receivedAt = intent.getLongExtra(EXTRA_SMS_RECEIVED_AT, 0L)
-        // Flutter has not necessarily subscribed yet while this Activity is
-        // being configured. The bridge retains this transient payload only in
-        // memory and flushes it once the Dart listener is ready.
-        SmsEventBridge.publishOrQueue(sender, body, receivedAt)
-        Log.d(smsLogTag, "activity_event_forwarded")
-        intent.removeExtra(EXTRA_SMS_SENDER)
-        intent.removeExtra(EXTRA_SMS_BODY)
-        intent.removeExtra(EXTRA_SMS_RECEIVED_AT)
     }
 
     private fun hasReadSmsPermission() = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_SMS) == PackageManager.PERMISSION_GRANTED

@@ -10,12 +10,18 @@ abstract final class AppTheme {
     final scheme = ColorScheme.fromSeed(
       seedColor: AppColors.primary,
       brightness: b,
-      primary: AppColors.primary,
+      primary: AppColors.primaryAction,
+      onPrimary: AppColors.onPrimary,
       surface: dark ? AppColors.darkSurface : AppColors.lightSurface,
     );
     return ThemeData(
       useMaterial3: true,
       colorScheme: scheme,
+      extensions: <ThemeExtension<dynamic>>[
+        dark
+            ? const FlowlySemanticColors.dark()
+            : const FlowlySemanticColors.light(),
+      ],
       fontFamily: 'Roboto',
       scaffoldBackgroundColor: dark
           ? AppColors.darkBackground
@@ -50,14 +56,16 @@ abstract final class AppTheme {
         ),
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
-        backgroundColor: AppColors.primary,
+        backgroundColor: scheme.primary,
         foregroundColor: scheme.onPrimary,
         elevation: 0,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
       bottomSheetTheme: BottomSheetThemeData(
         backgroundColor: dark ? AppColors.darkSurface : AppColors.lightSurface,
-        modalBackgroundColor: dark ? AppColors.darkSurface : AppColors.lightSurface,
+        modalBackgroundColor: dark
+            ? AppColors.darkSurface
+            : AppColors.lightSurface,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
         ),
@@ -114,7 +122,7 @@ abstract final class AppTheme {
         ),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: AppColors.primary,
+        color: scheme.primary,
         linearTrackColor: dark ? AppColors.darkMuted : AppColors.lightMuted,
         linearMinHeight: 6,
       ),
@@ -138,18 +146,43 @@ abstract final class AppTheme {
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         backgroundColor: dark ? AppColors.darkMuted : scheme.inverseSurface,
-        contentTextStyle: TextStyle(color: dark ? scheme.onSurface : scheme.onInverseSurface),
+        contentTextStyle: TextStyle(
+          color: dark ? scheme.onSurface : scheme.onInverseSurface,
+        ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       dividerTheme: DividerThemeData(
         color: scheme.outlineVariant.withValues(alpha: .45),
       ),
       textTheme: TextTheme(
-        headlineLarge: TextStyle(color: scheme.onSurface, fontSize: 32, fontWeight: FontWeight.w800, letterSpacing: -.8),
-        headlineMedium: TextStyle(color: scheme.onSurface, fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -.5),
-        headlineSmall: TextStyle(color: scheme.onSurface, fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -.35),
-        titleLarge: TextStyle(color: scheme.onSurface, fontSize: 20, fontWeight: FontWeight.w800),
-        titleMedium: TextStyle(color: scheme.onSurface, fontSize: 16, fontWeight: FontWeight.w700),
+        headlineLarge: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 32,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -.8,
+        ),
+        headlineMedium: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 26,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -.5,
+        ),
+        headlineSmall: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 22,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -.35,
+        ),
+        titleLarge: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 20,
+          fontWeight: FontWeight.w800,
+        ),
+        titleMedium: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
         bodyMedium: TextStyle(color: scheme.onSurfaceVariant, height: 1.45),
         bodySmall: TextStyle(color: scheme.onSurfaceVariant, height: 1.35),
         labelLarge: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),

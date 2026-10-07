@@ -9,13 +9,7 @@ import '../../transactions/providers/transaction_provider.dart';
 import '../../transactions/providers/transfer_candidate_provider.dart';
 import '../data/automatic_transaction_processor.dart';
 import '../data/sms_event_bridge.dart';
-import '../domain/services/financial_sms_parser_registry.dart';
-import '../domain/services/financial_sms_pipeline.dart';
-import '../parsers/evc_plus_parser.dart';
-import '../parsers/agro_bank_parser.dart';
-import '../parsers/deeqtoon_parser.dart';
-import '../parsers/generic_financial_parser.dart';
-import '../parsers/jeeb_parser.dart';
+import '../domain/services/financial_sms_pipeline_factory.dart';
 import 'automatic_detection_provider.dart';
 
 /// Keeps native SMS delivery opt-in: events only exist after Android permission
@@ -30,21 +24,14 @@ final smsLiveListenerProvider = Provider<void>((ref) {
   }
   developer.log('dart_listener_start', name: 'FlowlySMS');
   final processor = AutomaticTransactionProcessor(
-    pipeline: FinancialSmsPipeline(
-      FinancialSmsParserRegistry([
-        EvcPlusParser(),
-        JeebParser(),
-        DeeqtoonParser(),
-        AgroBankParser(),
-        GenericFinancialParser(),
-      ]),
-    ),
+    pipeline: createFinancialSmsPipeline(),
     database: AppDatabase.instance,
   );
   final StreamSubscription subscription = SmsEventBridge().events.listen(
     (event) async {
       try {
-        if (await processor.handle(event)) {
+        final outcome = await processor.handle(event);
+        if (outcome.databaseChanged) {
           await ref.read(transactionListProvider.notifier).refresh();
           await ref.read(pendingSmsTransferListProvider.notifier).refresh();
           developer.log('state_refresh_complete', name: 'FlowlySMS');
@@ -73,6 +60,16 @@ final smsLiveListenerProvider = Provider<void>((ref) {
       );
     },
   );
+  final databaseChangeSubscription = SmsEventBridge().databaseChanges.listen(
+    (_) async {
+      await ref.read(transactionListProvider.notifier).refresh();
+      await ref.read(pendingSmsTransferListProvider.notifier).refresh();
+      developer.log('state_refresh_complete', name: 'FlowlySMS');
+    },
+  );
   developer.log('dart_listener_attached', name: 'FlowlySMS');
-  ref.onDispose(subscription.cancel);
+  ref.onDispose(() {
+    subscription.cancel();
+    databaseChangeSubscription.cancel();
+  });
 });

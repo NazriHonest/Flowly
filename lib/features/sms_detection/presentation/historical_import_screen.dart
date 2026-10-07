@@ -8,13 +8,7 @@ import '../data/historical_import_processor.dart';
 import '../data/historical_sms_bridge.dart';
 import '../data/sms_permission_bridge.dart';
 import '../domain/entities/transaction_candidate.dart';
-import '../domain/services/financial_sms_parser_registry.dart';
-import '../domain/services/financial_sms_pipeline.dart';
-import '../parsers/evc_plus_parser.dart';
-import '../parsers/agro_bank_parser.dart';
-import '../parsers/deeqtoon_parser.dart';
-import '../parsers/generic_financial_parser.dart';
-import '../parsers/jeeb_parser.dart';
+import '../domain/services/financial_sms_pipeline_factory.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/formatters/money_formatter.dart';
@@ -36,15 +30,7 @@ class _HistoricalImportScreenState
 
   HistoricalImportProcessor get processor => HistoricalImportProcessor(
     database: AppDatabase.instance,
-    pipeline: FinancialSmsPipeline(
-      FinancialSmsParserRegistry([
-        EvcPlusParser(),
-        JeebParser(),
-        DeeqtoonParser(),
-        AgroBankParser(),
-        GenericFinancialParser(),
-      ]),
-    ),
+    pipeline: createFinancialSmsPipeline(),
   );
 
   Future<void> _start() async {

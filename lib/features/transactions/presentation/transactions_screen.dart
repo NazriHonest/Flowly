@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/formatters/money_formatter.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../accounts/providers/account_provider.dart';
 import '../domain/entities/transaction.dart';
@@ -134,30 +133,28 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final state = ref.watch(transactionListProvider);
     final accounts = ref.watch(accountListProvider).value ?? [];
 
     return Scaffold(
-      backgroundColor: isDark
-          ? AppColors.darkBackground
-          : AppColors.lightBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildHeader(context, isDark),
-            if (_showSearch) _buildSearchBar(context, isDark),
-            _buildTypePills(context, isDark),
+            _buildHeader(context),
+            if (_showSearch) _buildSearchBar(context),
+            _buildTypePills(context),
             const SizedBox(height: 4),
-            Expanded(child: _buildBody(context, state, accounts, isDark)),
+            Expanded(child: _buildBody(context, state, accounts)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildHeader(BuildContext context, bool isDark) {
+  Widget _buildHeader(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 12, 8),
       child: Row(
@@ -167,9 +164,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
               'Transactions',
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                 fontWeight: FontWeight.w800,
-                color: isDark
-                    ? AppColors.darkTextPrimary
-                    : AppColors.lightTextPrimary,
+                color: colors.onSurface,
               ),
             ),
           ),
@@ -177,9 +172,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             tooltip: 'Search',
             icon: Icon(
               _showSearch ? Icons.search_off_rounded : Icons.search_rounded,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: colors.onSurfaceVariant,
             ),
             onPressed: () {
               setState(() {
@@ -193,15 +186,13 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             icon: Badge(
               isLabelVisible: _activeFilterCount > 0,
               label: Text('$_activeFilterCount'),
-              backgroundColor: AppColors.primary,
-              textColor: Colors.white,
+              backgroundColor: colors.primary,
+              textColor: colors.onPrimary,
               child: Icon(
                 Icons.tune_rounded,
                 color: _activeFilterCount > 0
-                    ? AppColors.primary
-                    : isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
+                    ? colors.primary
+                    : colors.onSurfaceVariant,
               ),
             ),
             onPressed: _openFilters,
@@ -211,10 +202,10 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             icon: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: AppColors.primary,
+                color: colors.primary,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.add, color: Colors.white, size: 18),
+              child: Icon(Icons.add, color: colors.onPrimary, size: 18),
             ),
             onPressed: () => Navigator.push(
               context,
@@ -226,30 +217,21 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
-  Widget _buildSearchBar(BuildContext context, bool isDark) {
+  Widget _buildSearchBar(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
       child: TextField(
         controller: _searchController,
         autofocus: true,
         onChanged: (_) => setState(() {}),
-        style: TextStyle(
-          color: isDark
-              ? AppColors.darkTextPrimary
-              : AppColors.lightTextPrimary,
-        ),
+        style: TextStyle(color: colors.onSurface),
         decoration: InputDecoration(
           hintText: 'Search title, notes, category…',
-          hintStyle: TextStyle(
-            color: isDark
-                ? AppColors.darkTextSecondary
-                : AppColors.lightTextSecondary,
-          ),
+          hintStyle: TextStyle(color: colors.onSurfaceVariant),
           prefixIcon: Icon(
             Icons.search_rounded,
-            color: isDark
-                ? AppColors.darkTextSecondary
-                : AppColors.lightTextSecondary,
+            color: colors.onSurfaceVariant,
           ),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
@@ -258,22 +240,18 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                 )
               : null,
           filled: true,
-          fillColor: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+          fillColor: colors.surface,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-            ),
+            borderSide: BorderSide(color: colors.outlineVariant),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-            ),
+            borderSide: BorderSide(color: colors.outlineVariant),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+            borderSide: BorderSide(color: colors.primary, width: 1.5),
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -284,7 +262,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     );
   }
 
-  Widget _buildTypePills(BuildContext context, bool isDark) {
+  Widget _buildTypePills(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     Widget pill(String label, TransactionType? value) {
       final selected = _filters.type == value;
       return GestureDetector(
@@ -295,29 +274,17 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
-            color: selected
-                ? AppColors.primary
-                : isDark
-                ? AppColors.darkSurface
-                : AppColors.lightSurface,
+            color: selected ? colors.primary : colors.surface,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
-              color: selected
-                  ? AppColors.primary
-                  : isDark
-                  ? AppColors.darkBorder
-                  : AppColors.lightBorder,
+              color: selected ? colors.primary : colors.outlineVariant,
               width: 1.2,
             ),
           ),
           child: Text(
             label,
             style: TextStyle(
-              color: selected
-                  ? Colors.white
-                  : isDark
-                  ? AppColors.darkTextPrimary
-                  : AppColors.lightTextPrimary,
+              color: selected ? colors.onPrimary : colors.onSurface,
               fontWeight: FontWeight.w600,
               fontSize: 13,
             ),
@@ -347,7 +314,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     BuildContext context,
     AsyncValue<List<Transaction>> state,
     List<dynamic> accounts,
-    bool isDark,
   ) {
     return state.when(
       loading: () => const AppLoadingList(),
@@ -420,7 +386,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             itemBuilder: (context, i) {
               final day = days[i];
               final dayItems = groups[day]!;
-              return _buildDayGroup(context, day, dayItems, isDark);
+              return _buildDayGroup(context, day, dayItems);
             },
           ),
         );
@@ -432,7 +398,6 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
     BuildContext context,
     DateTime day,
     List<Transaction> items,
-    bool isDark,
   ) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -456,9 +421,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             label,
             style: Theme.of(context).textTheme.labelMedium?.copyWith(
               fontWeight: FontWeight.w700,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               letterSpacing: 0.4,
             ),
           ),

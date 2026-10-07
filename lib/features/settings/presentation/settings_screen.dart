@@ -22,7 +22,7 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: 32),
+        padding: const EdgeInsets.only(bottom: 48),
         children: [
           FlowlySection(
             title: 'General',
@@ -111,20 +111,11 @@ class SettingsScreen extends ConsumerWidget {
           FlowlySection(
             title: 'Data',
             children: [
-              _SettingsTile(
-                icon: Icons.ios_share_outlined,
-                title: 'Export',
-                subtitle: 'CSV, Excel workbook or PDF report',
-                onTap: () => Navigator.push(
-                  c,
-                  MaterialPageRoute(builder: (_) => const DataToolsScreen()),
-                ),
-              ),
               const Divider(height: 1),
               _SettingsTile(
-                icon: Icons.backup_outlined,
-                title: 'Backup & restore',
-                subtitle: 'Create or restore a local backup',
+                icon: Icons.storage_outlined,
+                title: 'Data tools',
+                subtitle: 'Export, backup and restore your data',
                 onTap: () => Navigator.push(
                   c,
                   MaterialPageRoute(builder: (_) => const DataToolsScreen()),
@@ -143,7 +134,7 @@ class SettingsScreen extends ConsumerWidget {
       builder: (sheet) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: ['KES', 'USD', 'EUR', 'GBP']
+          children: ['USD', 'SOS']
               .map(
                 (code) => ListTile(
                   title: Text(code),

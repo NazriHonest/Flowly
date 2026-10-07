@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 abstract final class AppColors {
   static const primary = Color(0xFF079669),
       primaryDark = Color(0xFF047857),
+      primaryAction = Color(0xFF047857),
       primaryLight = Color(0xFF36B88B),
       secondary = Color(0xFF14B8A6),
       income = Color(0xFF16A34A),
@@ -21,7 +22,9 @@ abstract final class AppColors {
       warningSoft = Color(0xFFFFF4D6),
       infoSoft = Color(0xFFE0F2FE),
       onPrimary = Color(0xFFFFFFFF),
-      heroTextMuted = Color(0xB3FFFFFF),
+      heroGradientStart = Color(0xFF034E3A),
+      heroGradientEnd = Color(0xFF047857),
+      heroTextMuted = Color(0xFFE4F5EF),
       heroDivider = Color(0x3DFFFFFF),
       heroIncome = Color(0xFFB8F6DC),
       heroExpense = Color(0xFFFFD0C9),
@@ -45,4 +48,80 @@ abstract final class AppColors {
     Color(0xFFF97316),
     Color(0xFF64748B),
   ];
+
+  static Color foregroundOn(Color background) =>
+      ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+      ? Colors.white
+      : lightTextPrimary;
+}
+
+@immutable
+class FlowlySemanticColors extends ThemeExtension<FlowlySemanticColors> {
+  const FlowlySemanticColors({
+    required this.incomeForeground,
+    required this.expenseForeground,
+    required this.transferForeground,
+    required this.warningForeground,
+    required this.infoForeground,
+  });
+  const FlowlySemanticColors.light()
+    : incomeForeground = const Color(0xFF0F7834),
+      expenseForeground = const Color(0xFFC81E1E),
+      transferForeground = const Color(0xFF0369A1),
+      warningForeground = const Color(0xFF92400E),
+      infoForeground = const Color(0xFF0369A1);
+  const FlowlySemanticColors.dark()
+    : incomeForeground = const Color(0xFF4ADE80),
+      expenseForeground = const Color(0xFFFF8A80),
+      transferForeground = const Color(0xFF7DD3FC),
+      warningForeground = const Color(0xFFFCD34D),
+      infoForeground = const Color(0xFF7DD3FC);
+  final Color incomeForeground,
+      expenseForeground,
+      transferForeground,
+      warningForeground,
+      infoForeground;
+  static FlowlySemanticColors of(BuildContext context) =>
+      Theme.of(context).extension<FlowlySemanticColors>()!;
+  @override
+  FlowlySemanticColors copyWith({
+    Color? incomeForeground,
+    Color? expenseForeground,
+    Color? transferForeground,
+    Color? warningForeground,
+    Color? infoForeground,
+  }) => FlowlySemanticColors(
+    incomeForeground: incomeForeground ?? this.incomeForeground,
+    expenseForeground: expenseForeground ?? this.expenseForeground,
+    transferForeground: transferForeground ?? this.transferForeground,
+    warningForeground: warningForeground ?? this.warningForeground,
+    infoForeground: infoForeground ?? this.infoForeground,
+  );
+  @override
+  FlowlySemanticColors lerp(covariant FlowlySemanticColors? other, double t) {
+    if (other == null) return this;
+    return FlowlySemanticColors(
+      incomeForeground: Color.lerp(
+        incomeForeground,
+        other.incomeForeground,
+        t,
+      )!,
+      expenseForeground: Color.lerp(
+        expenseForeground,
+        other.expenseForeground,
+        t,
+      )!,
+      transferForeground: Color.lerp(
+        transferForeground,
+        other.transferForeground,
+        t,
+      )!,
+      warningForeground: Color.lerp(
+        warningForeground,
+        other.warningForeground,
+        t,
+      )!,
+      infoForeground: Color.lerp(infoForeground, other.infoForeground, t)!,
+    );
+  }
 }

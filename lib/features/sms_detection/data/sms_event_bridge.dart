@@ -17,11 +17,15 @@ class SmsEvent {
 
 class SmsEventBridge {
   static const _channel = EventChannel('com.flowly/sms_events');
-  Stream<SmsEvent> get events => _channel
+  static final Stream<Map<Object?, Object?>> _nativeEvents = _channel
       .receiveBroadcastStream()
       .where((event) => event is Map)
-      .map((event) {
-        final values = Map<Object?, Object?>.from(event as Map);
+      .map((event) => Map<Object?, Object?>.from(event as Map))
+      .asBroadcastStream();
+
+  Stream<SmsEvent> get events => _nativeEvents
+      .where((values) => values['type'] == null || values['type'] == 'sms')
+      .map((values) {
         return SmsEvent(
           sender: values['sender'] as String? ?? '',
           body: values['body'] as String? ?? '',
@@ -30,4 +34,8 @@ class SmsEventBridge {
           ),
         );
       });
+
+  Stream<void> get databaseChanges => _nativeEvents
+      .where((values) => values['type'] == 'database_changed')
+      .map<void>((_) {});
 }

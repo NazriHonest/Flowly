@@ -14,8 +14,12 @@ abstract interface class AutomaticDetectionStore {
   Future<bool> writeEnabled(bool enabled);
 }
 
+abstract interface class LegacyAutomaticDetectionStore {
+  Future<void> clearLegacyEnabled();
+}
+
 class SharedPreferencesAutomaticDetectionStore
-    implements AutomaticDetectionStore {
+    implements AutomaticDetectionStore, LegacyAutomaticDetectionStore {
   const SharedPreferencesAutomaticDetectionStore();
 
   @override
@@ -29,6 +33,12 @@ class SharedPreferencesAutomaticDetectionStore
     final prefs = await SharedPreferences.getInstance();
     return prefs.setBool(automaticDetectionEnabledKey, enabled);
   }
+
+  @override
+  Future<void> clearLegacyEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(automaticDetectionEnabledKey);
+  }
 }
 
 abstract interface class AutomaticDetectionPlatform {
@@ -37,8 +47,13 @@ abstract interface class AutomaticDetectionPlatform {
   Future<void> synchronizeReceiver(bool enabled);
 }
 
+abstract interface class NativeAutomaticDetectionState {
+  Future<bool> restoreNativeState(bool legacyEnabled);
+  Future<bool> readNativeState();
+}
+
 class MethodChannelAutomaticDetectionPlatform
-    implements AutomaticDetectionPlatform {
+    implements AutomaticDetectionPlatform, NativeAutomaticDetectionState {
   const MethodChannelAutomaticDetectionPlatform();
 
   @override
@@ -50,6 +65,18 @@ class MethodChannelAutomaticDetectionPlatform
   @override
   Future<void> synchronizeReceiver(bool enabled) =>
       _nativeChannel.invokeMethod<void>('setAutomaticDetection', enabled);
+
+  @override
+  Future<bool> restoreNativeState(bool legacyEnabled) async =>
+      await _nativeChannel.invokeMethod<bool>('automaticDetectionState', {
+        'legacyEnabled': legacyEnabled,
+      }) ??
+      false;
+
+  @override
+  Future<bool> readNativeState() async =>
+      await _nativeChannel.invokeMethod<bool>('automaticDetectionState') ??
+      false;
 }
 
 /// The single owner of the persisted, native and runtime automatic-detection
@@ -78,16 +105,24 @@ class AutomaticDetectionController extends StateNotifier<bool> {
   Future<bool> get restored => _restoration;
 
   Future<bool> _restoreAutomaticDetection() async {
-    final enabled = await _store.readEnabled();
-    developer.log('startup_restore enabled=$enabled', name: 'FlowlySMS');
-    if (!enabled) return _applyDisabledState(persist: false);
-
     try {
+      final legacyEnabled = await _store.readEnabled();
+      final enabled = _platform is NativeAutomaticDetectionState
+          ? await (_platform as NativeAutomaticDetectionState)
+                .restoreNativeState(legacyEnabled)
+          : legacyEnabled;
+      if (_store is LegacyAutomaticDetectionStore &&
+          _platform is NativeAutomaticDetectionState) {
+        await (_store as LegacyAutomaticDetectionStore).clearLegacyEnabled();
+      }
+      developer.log('startup_restore enabled=$enabled', name: 'FlowlySMS');
+      if (!enabled) return _applyDisabledState(persist: false);
+
       final granted = await _platform.permissionGranted();
       developer.log('permission_granted=$granted', name: 'FlowlySMS');
       if (!granted) {
         await _platform.synchronizeReceiver(false);
-        await _store.writeEnabled(false);
+        await _writeLegacyState(false);
         state = false;
         developer.log('native_receiver_synced=false', name: 'FlowlySMS');
         return false;
@@ -123,7 +158,7 @@ class AutomaticDetectionController extends StateNotifier<bool> {
 
       await _platform.synchronizeReceiver(true);
       developer.log('native_receiver_synced=true', name: 'FlowlySMS');
-      if (!await _store.writeEnabled(true)) {
+      if (!await _writeLegacyState(true)) {
         await _platform.synchronizeReceiver(false);
         developer.log('native_receiver_synced=false', name: 'FlowlySMS');
         return false;
@@ -131,6 +166,11 @@ class AutomaticDetectionController extends StateNotifier<bool> {
       state = true;
       return true;
     } catch (_) {
+      try {
+        await _platform.synchronizeReceiver(false);
+      } catch (_) {
+        // Native rollback is best effort after an enable failure.
+      }
       state = false;
       developer.log('native_receiver_synced=false', name: 'FlowlySMS');
       return false;
@@ -147,7 +187,7 @@ class AutomaticDetectionController extends StateNotifier<bool> {
     try {
       await _platform.synchronizeReceiver(false);
       developer.log('native_receiver_synced=false', name: 'FlowlySMS');
-      if (persist && !await _store.writeEnabled(false)) return false;
+      if (persist && !await _writeLegacyState(false)) return false;
       state = false;
       return true;
     } catch (_) {
@@ -158,6 +198,36 @@ class AutomaticDetectionController extends StateNotifier<bool> {
 
   Future<bool> setEnabled(bool enabled) =>
       enabled ? enableAutomaticDetection() : disableAutomaticDetection();
+
+  Future<bool> reconcileOnResume() async {
+    await _restoration;
+    if (_platform is! NativeAutomaticDetectionState) return state;
+    try {
+      final enabled = await (_platform as NativeAutomaticDetectionState)
+          .readNativeState();
+      if (!enabled) {
+        state = false;
+        return false;
+      }
+      final granted = await _platform.permissionGranted();
+      developer.log('permission_granted=$granted', name: 'FlowlySMS');
+      if (!granted) return _applyDisabledState(persist: false);
+      await _platform.synchronizeReceiver(true);
+      state = true;
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> _writeLegacyState(bool enabled) async {
+    if (_store is LegacyAutomaticDetectionStore &&
+        _platform is NativeAutomaticDetectionState) {
+      await (_store as LegacyAutomaticDetectionStore).clearLegacyEnabled();
+      return true;
+    }
+    return _store.writeEnabled(enabled);
+  }
 }
 
 final automaticDetectionProvider =

@@ -46,104 +46,119 @@ class _DataToolsScreenState extends ConsumerState<DataToolsScreen> {
     if (completedPath != null || operationError != null) {
       final success = completedPath != null;
       return Scaffold(
-        appBar: AppBar(title: Text(success ? 'Export ready' : 'Operation failed')),
+        appBar: AppBar(
+          title: Text(success ? 'Export ready' : 'Operation failed'),
+        ),
         body: AppEmptyState(
-          icon: success ? Icons.check_circle_rounded : Icons.error_outline_rounded,
+          icon: success
+              ? Icons.check_circle_rounded
+              : Icons.error_outline_rounded,
           title: success ? 'Your file is ready' : 'We couldn’t finish that',
-          message: success ? 'The file was generated and shared from this device.' : operationError!,
+          message: success
+              ? 'The file was generated and shared from this device.'
+              : operationError!,
           actionLabel: success ? 'Done' : 'Try again',
-          onAction: () => setState(() { completedPath = null; operationError = null; }),
+          onAction: () => setState(() {
+            completedPath = null;
+            operationError = null;
+          }),
         ),
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('Backup & Restore')),
+      appBar: AppBar(title: const Text('Data Tools')),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
           if (busy) const LinearProgressIndicator(),
-          FlowlySection(title: 'Export', children: [
-          ListTile(
-            leading: const Icon(Icons.table_chart_outlined),
-            title: const Text('Export CSV'),
-            subtitle: const Text('Normalized transaction data'),
-            onTap: busy ? null : () => run(() => export.csv(filter)),
+          FlowlySection(
+            title: 'Export',
+            children: [
+              ListTile(
+                leading: const Icon(Icons.table_chart_outlined),
+                title: const Text('Export CSV'),
+                subtitle: const Text('Normalized transaction data'),
+                onTap: busy ? null : () => run(() => export.csv(filter)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.grid_on_outlined),
+                title: const Text('Export Excel workbook'),
+                subtitle: const Text(
+                  'Summary, transactions, accounts, categories, budgets and goals',
+                ),
+                onTap: busy ? null : () => run(() => export.xlsx(filter)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.picture_as_pdf_outlined),
+                title: const Text('Export PDF report'),
+                subtitle: const Text('Financial summary and transactions'),
+                onTap: busy ? null : () => run(() => export.pdf(filter)),
+              ),
+              ListTile(
+                leading: const Icon(Icons.filter_alt_outlined),
+                title: const Text('Export filters'),
+                subtitle: Text(_filterSummary()),
+                onTap: busy ? null : _editFilter,
+              ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.grid_on_outlined),
-            title: const Text('Export Excel workbook'),
-            subtitle: const Text(
-              'Summary, transactions, accounts, categories, budgets and goals',
-            ),
-            onTap: busy ? null : () => run(() => export.xlsx(filter)),
+          FlowlySection(
+            title: 'Backup',
+            children: [
+              ListTile(
+                leading: const Icon(Icons.backup_outlined),
+                title: const Text('Create backup'),
+                subtitle: const Text(
+                  'Versioned local database and settings archive',
+                ),
+                onTap: busy ? null : () => run(backup.create),
+              ),
+              ListTile(
+                leading: const Icon(Icons.restore_outlined),
+                title: const Text('Restore backup'),
+                subtitle: const Text(
+                  'Choose a .zip backup to validate and restore',
+                ),
+                onTap: busy
+                    ? null
+                    : () async {
+                        final result = await FilePicker.platform.pickFiles(
+                          type: FileType.custom,
+                          allowedExtensions: ['zip'],
+                        );
+                        final path = result?.files.single.path;
+                        if (path == null) return;
+                        final confirmed = await showFlowlyConfirmation(
+                          context,
+                          title: 'Restore this backup?',
+                          message: 'Flowly validates the selected archive first. Restoring replaces local financial data and saved settings.',
+                          confirmLabel: 'Restore',
+                        );
+                        if (!confirmed || !mounted) return;
+                        setState(() => busy = true);
+                        try {
+                          await backup.restore(File(path));
+                          if (!mounted) return;
+                          ref.invalidate(accountListProvider);
+                          ref.invalidate(categoryListProvider);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Backup restored. Return to a screen to reload its restored data.',
+                              ),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context)
+                              .showSnackBar(SnackBar(content: Text('$e')));
+                        } finally {
+                          if (mounted) setState(() => busy = false);
+                        }
+                      },
+              ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.picture_as_pdf_outlined),
-            title: const Text('Export PDF report'),
-            subtitle: const Text('Financial summary and transactions'),
-            onTap: busy ? null : () => run(() => export.pdf(filter)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.filter_alt_outlined),
-            title: const Text('Export filters'),
-            subtitle: Text(_filterSummary()),
-            onTap: busy ? null : _editFilter,
-          ),
-          ]),
-          FlowlySection(title: 'Backup', children: [
-          ListTile(
-            leading: const Icon(Icons.backup_outlined),
-            title: const Text('Create backup'),
-            subtitle: const Text(
-              'Versioned local database and settings archive',
-            ),
-            onTap: busy ? null : () => run(backup.create),
-          ),
-          ListTile(
-            leading: const Icon(Icons.restore_outlined),
-            title: const Text('Restore backup'),
-            subtitle: const Text(
-              'Choose a .zip backup to validate and restore',
-            ),
-            onTap: busy
-                ? null
-                : () async {
-                    final result = await FilePicker.platform.pickFiles(
-                      type: FileType.custom,
-                      allowedExtensions: ['zip'],
-                    );
-                    final path = result?.files.single.path;
-                    if (path == null) return;
-                    final confirmed = await showFlowlyConfirmation(
-                      context,
-                      title: 'Restore this backup?',
-                      message: 'Flowly validates the selected archive first. Restoring replaces local financial data and saved settings.',
-                      confirmLabel: 'Restore',
-                    );
-                    if (!confirmed || !mounted) return;
-                    setState(() => busy = true);
-                    try {
-                      await backup.restore(File(path));
-                      if (!mounted) return;
-                      ref.invalidate(accountListProvider);
-                      ref.invalidate(categoryListProvider);
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Backup restored. Return to a screen to reload its restored data.',
-                          ),
-                        ),
-                      );
-                    } catch (e) {
-                      if (!mounted) return;
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(SnackBar(content: Text('$e')));
-                    } finally {
-                      if (mounted) setState(() => busy = false);
-                    }
-                  },
-          ),
-          ]),
         ],
       ),
     );

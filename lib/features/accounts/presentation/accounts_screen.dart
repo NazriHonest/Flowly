@@ -104,7 +104,7 @@ class _AccountTile extends StatelessWidget {
         backgroundColor: Color(account.color),
         child: Icon(
           IconData(account.icon, fontFamily: 'MaterialIcons'),
-          color: AppColors.onPrimary,
+          color: AppColors.foregroundOn(Color(account.color)),
         ),
       ),
       title: Text(account.name),

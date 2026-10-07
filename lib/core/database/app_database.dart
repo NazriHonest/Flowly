@@ -58,6 +58,7 @@ class AppDatabase {
         orderBy: 'transaction_date DESC, created_at DESC, id DESC',
       )
       .then((rows) => rows.map(_transaction).toList());
+      
   Future<List<Account>> accounts() async => (await db)
       .query('accounts', where: 'is_archived=0')
       .then(
@@ -77,6 +78,7 @@ class AppDatabase {
             )
             .toList(),
       );
+
   Future<List<Budget>> budgets() async => (await db)
       .query('budgets', where: 'is_archived=0')
       .then(
@@ -97,6 +99,7 @@ class AppDatabase {
             )
             .toList(),
       );
+
   Future<List<Category>> categories({
     bool includeArchived = false,
   }) async => (await db)
@@ -121,6 +124,7 @@ class AppDatabase {
             )
             .toList(),
       );
+
   Future<List<Goal>> goals() async => (await db)
       .query('goals', orderBy: 'target_date ASC')
       .then(
@@ -243,7 +247,9 @@ class AppDatabase {
     String fingerprint,
   ) async {
     final database = await db;
-    final saved = await database.transaction((txn) async {
+    late final bool saved;
+    try {
+      saved = await database.transaction((txn) async {
       final count =
           Sqflite.firstIntValue(
             await txn.rawQuery(
@@ -276,7 +282,11 @@ class AppDatabase {
         'created_at': DateTime.now().toUtc().toIso8601String(),
       });
       return true;
-    });
+      });
+    } on DatabaseException catch (error) {
+      if (error.isUniqueConstraintError()) return false;
+      rethrow;
+    }
     if (saved) {
       final row = (await database.query(
         'transaction_fingerprints',
@@ -420,7 +430,8 @@ class AppDatabase {
       throw ArgumentError('An internal-transfer observation is required.');
     }
     final database = await db;
-    return database.transaction((txn) async {
+    try {
+      return await database.transaction((txn) async {
       final duplicateObservation =
           Sqflite.firstIntValue(
             await txn.rawQuery(
@@ -676,7 +687,13 @@ class AppDatabase {
 
       await txn.insert('sms_transfer_observations', observationValues());
       return SmsTransferSaveOutcome.pending;
-    });
+      });
+    } on DatabaseException catch (error) {
+      if (error.isUniqueConstraintError()) {
+        return SmsTransferSaveOutcome.duplicate;
+      }
+      rethrow;
+    }
   }
 
   Future<int> _insertCanonicalSmsTransfer(
@@ -1158,6 +1175,7 @@ class AppDatabase {
     where: 'id=?',
     whereArgs: [id],
   );
+  
   Future<void> saveCategory(Category category) async {
     final now = DateTime.now().toIso8601String();
     final values = {
@@ -1187,6 +1205,7 @@ class AppDatabase {
     where: 'id=?',
     whereArgs: [id],
   );
+  
   Future<void> saveGoal(Goal goal) async {
     final values = {
       'name': goal.name,
@@ -1233,15 +1252,19 @@ class AppDatabase {
 
   Future<void> deleteGoal(int id) async =>
       (await db).delete('goals', where: 'id=?', whereArgs: [id]);
+  
   Future<List<Map<String, Object?>>> merchantRules() async =>
       (await db).query('merchant_rules', orderBy: 'normalized_merchant');
+  
   Future<void> saveMerchantRule(String merchant, String category) async =>
       (await db).insert('merchant_rules', {
         'normalized_merchant': normalizeMerchant(merchant),
         'category': category,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
+  
   Future<void> deleteMerchantRule(int id) async =>
       (await db).delete('merchant_rules', where: 'id=?', whereArgs: [id]);
+  
   Future<List<RecurringTransaction>> recurringTransactions() async => (await db)
       .query(
         'recurring_transactions',
@@ -1272,6 +1295,7 @@ class AppDatabase {
             )
             .toList(),
       );
+  
   Future<void> saveRecurringTransaction(RecurringTransaction item) async {
     final values = {
       'title': item.title,
@@ -1305,6 +1329,7 @@ class AppDatabase {
     where: 'id=?',
     whereArgs: [id],
   );
+  
   Future<bool> generateRecurringOccurrence(
     RecurringTransaction item,
     DateTime occurrence,

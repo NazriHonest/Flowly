@@ -14,6 +14,7 @@ class RecurringScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(recurringListProvider);
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Recurring'),
@@ -22,8 +23,8 @@ class RecurringScreen extends ConsumerWidget {
             padding: const EdgeInsets.only(right: 16),
             child: IconButton.filled(
               style: IconButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
+                backgroundColor: colors.primary,
+                foregroundColor: colors.onPrimary,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -103,7 +104,11 @@ class _RecurringCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final income = item.type.name == 'income';
-    final color = income ? AppColors.income : AppColors.expense;
+    final baseColor = income ? AppColors.income : AppColors.expense;
+    final semantic = FlowlySemanticColors.of(context);
+    final foreground = income
+        ? semantic.incomeForeground
+        : semantic.expenseForeground;
     return Material(
       color: Theme.of(context).colorScheme.surface,
       borderRadius: BorderRadius.circular(9),
@@ -119,14 +124,14 @@ class _RecurringCard extends StatelessWidget {
                 width: 28,
                 height: 28,
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: .12),
+                  color: baseColor.withValues(alpha: .12),
                   borderRadius: BorderRadius.circular(7),
                 ),
                 child: Icon(
                   income
                       ? Icons.south_west_rounded
                       : _recurringIcon(item.category),
-                  color: color,
+                  color: foreground,
                   size: 15,
                 ),
               ),
@@ -155,7 +160,7 @@ class _RecurringCard extends StatelessWidget {
                   Text(
                     MoneyFormatter.signed(item.amountMinor, negative: !income),
                     style: TextStyle(
-                      color: color,
+                      color: foreground,
                       fontSize: 10,
                       fontWeight: FontWeight.w800,
                     ),
@@ -180,7 +185,7 @@ class _RecurringCard extends StatelessWidget {
 BoxDecoration _recurringBox(BuildContext context) => BoxDecoration(
   color: Theme.of(context).colorScheme.surface,
   borderRadius: BorderRadius.circular(9),
-  border: Border.all(color: AppColors.lightBorder),
+  border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
 );
 IconData _recurringIcon(String category) {
   final v = category.toLowerCase();

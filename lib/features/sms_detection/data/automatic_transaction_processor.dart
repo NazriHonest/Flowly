@@ -5,6 +5,7 @@ import 'dart:developer' as developer;
 import '../../categorization/domain/services/categorization_service.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../domain/entities/transaction_candidate.dart';
+import '../domain/entities/sms_processing_outcome.dart';
 import '../domain/entities/sms_provider.dart';
 import '../domain/entities/sms_transfer_observation.dart';
 import '../domain/services/confidence_calculator.dart';
@@ -37,7 +38,7 @@ Transaction createLiveSmsTransaction({
 );
 
 /// Converts a transient native SMS event into a normalized stored transaction.
-/// It deliberately drops the raw body immediately after [process] returns.
+/// It deliberately drops the raw body immediately after [handle] returns.
 class AutomaticTransactionProcessor {
   AutomaticTransactionProcessor({
     required this._pipeline,
@@ -48,132 +49,189 @@ class AutomaticTransactionProcessor {
   final AppDatabase _database;
   final CategorizationService _categorization;
 
-  Future<bool> handle(SmsEvent event) async {
-    developer.log('dart_event_received', name: 'FlowlySMS');
-    final result = _pipeline.process(
-      sender: event.sender,
-      message: event.body,
-      receivedAt: event.receivedAt,
-    );
-    if (result == null || result.disposition == DetectionDisposition.rejected) {
-      developer.log('parse_success=false', name: 'FlowlySMS');
-      return false;
-    }
-    developer.log(
-      "provider_detected=${result.candidate.provider.toUpperCase().replaceAll(' ', '_')}",
-      name: 'FlowlySMS',
-    );
-    final accounts = await _database.accounts();
-    if (accounts.isEmpty) {
-      developer.log('mapping_found=false', name: 'FlowlySMS');
-      return false;
-    }
-    // Provider configuration is optional. When the sender has been explicitly
-    // configured, honour its enabled flag and account mapping rather than
-    // silently assigning the transaction to the first account.
-    final providers = await _database.smsProviders();
-    developer.log('mapping_state_ready', name: 'FlowlySMS');
-    final normalizedSender = event.sender.trim().toLowerCase();
-    final parsedProvider = result.candidate.provider.trim().toLowerCase();
-    final configuredProvider = providers.where((provider) {
-      final identity = provider.name.trim().toLowerCase();
-      final aliases = provider.senderAliases
-          .map((alias) => alias.trim().toLowerCase())
-          .toSet();
-      final senderMatches =
-          identity == normalizedSender || aliases.contains(normalizedSender);
-      final parserMatches =
-          parsedProvider != 'generic' && identity == parsedProvider;
-      return senderMatches || parserMatches;
-    }).firstOrNull;
-    if (configuredProvider != null && !configuredProvider.enabled) {
-      developer.log('provider_enabled=false', name: 'FlowlySMS');
-      return false;
-    }
-    final mappings = configuredProvider == null
-        ? const <ProviderAccountMapping>[]
-        : (await _database.providerAccountMappings())
-              .where((mapping) => mapping.providerId == configuredProvider.id)
-              .toList();
-    final mappedAccountId = mappings.isEmpty ? null : mappings.first.accountId;
-    final accountId = accounts.any((account) => account.id == mappedAccountId)
-        ? mappedAccountId
-        : null;
-    // Never attribute an unknown/unmapped sender to an arbitrary account.
-    // The provider must be mapped explicitly before its messages are stored.
-    if (configuredProvider == null || accountId == null) {
-      developer.log('mapping_found=false', name: 'FlowlySMS');
-      await _database.createNotification(
-        'SMS provider needs mapping',
-        'Map ${event.sender} to an account before importing its transactions.',
+  Future<SmsProcessingOutcome> handle(SmsEvent event) async {
+    try {
+      developer.log('dart_event_received', name: 'FlowlySMS');
+      final result = _pipeline.process(
+        sender: event.sender,
+        message: event.body,
+        receivedAt: event.receivedAt,
       );
-      return false;
-    }
-    developer.log('mapping_found=true', name: 'FlowlySMS');
-    final candidate = result.candidate;
-    if (candidate.semantics == CandidateSemantics.internalTransfer) {
-      final mapping = mappings.first;
-      final outcome = await _database.saveInternalTransferObservation(
-        candidate: candidate,
-        providerId: configuredProvider.id!,
-        mappedAccountId: mapping.accountId!,
-        linkedAccountId: mapping.linkedAccountId,
-        source: TransactionSource.smsLive,
-        smsReceivedAt: event.receivedAt,
-        fingerprint: result.fingerprint,
-      );
-      final saved = outcome != SmsTransferSaveOutcome.duplicate;
-      developer.log('transfer_observation=${outcome.name}', name: 'FlowlySMS');
-      developer.log('persistence_success=$saved', name: 'FlowlySMS');
-      if (outcome == SmsTransferSaveOutcome.pending) {
-        await _database.createNotification(
-          'Possible account transfer',
-          'Choose the linked owned account to confirm a detected transfer.',
+      if (result == null ||
+          result.disposition == DetectionDisposition.rejected) {
+        developer.log('normalized_failed', name: 'FlowlySMS');
+        return const SmsProcessingOutcome(
+          SmsProcessingDisposition.unsupported,
         );
       }
-      return saved;
-    }
-    final merchant = candidate.merchant ?? candidate.provider;
-    final storedRules = await _database.merchantRules();
-    final category =
-        candidate.categorySuggestion ??
-        _categorization.suggest(
-          merchant: merchant,
-          merchantRules: storedRules.map(
-            (rule) => MerchantRule(
-              rule['normalized_merchant'] as String,
-              rule['category'] as String,
-            ),
-          ),
-          keywordRules: const [],
+      developer.log('normalized_success', name: 'FlowlySMS');
+      developer.log(
+        'provider_detected=${result.candidate.provider.toUpperCase().replaceAll(' ', '_')}',
+        name: 'FlowlySMS',
+      );
+      final accounts = await _database.accounts();
+      if (accounts.isEmpty) {
+        developer.log('mapping_found=false', name: 'FlowlySMS');
+        return const SmsProcessingOutcome(
+          SmsProcessingDisposition.mappingMissing,
         );
-    final status = result.disposition == DetectionDisposition.confirmed
-        ? ReviewStatus.confirmed
-        : ReviewStatus.needsReview;
-    final saved = await _database.saveDetectedTransaction(
-      createLiveSmsTransaction(
-        candidate: candidate,
-        merchant: merchant,
-        category: category,
-        accountId: accountId,
-        status: status,
-        smsReceivedAt: event.receivedAt,
-      ),
-      result.fingerprint,
-    );
-    developer.log('persistence_success=$saved', name: 'FlowlySMS');
-    if (saved && status == ReviewStatus.needsReview) {
-      await _database.createNotification(
-        'Transaction needs review',
-        'A detected transaction from $merchant needs your confirmation.',
+      }
+      // Provider configuration is optional. When the sender has been
+      // configured, honour its enabled flag and mapping.
+      final providers = await _database.smsProviders();
+      developer.log('mapping_state_ready', name: 'FlowlySMS');
+      final normalizedSender = event.sender.trim().toLowerCase();
+      final parsedProvider = result.candidate.provider.trim().toLowerCase();
+      final configuredProvider = providers.where((provider) {
+        final identity = provider.name.trim().toLowerCase();
+        final aliases = provider.senderAliases
+            .map((alias) => alias.trim().toLowerCase())
+            .toSet();
+        final senderMatches =
+            identity == normalizedSender || aliases.contains(normalizedSender);
+        final parserMatches =
+            parsedProvider != 'generic' && identity == parsedProvider;
+        return senderMatches || parserMatches;
+      }).firstOrNull;
+      if (configuredProvider != null && !configuredProvider.enabled) {
+        developer.log('provider_enabled=false', name: 'FlowlySMS');
+        return const SmsProcessingOutcome(
+          SmsProcessingDisposition.providerDisabled,
+        );
+      }
+      final mappings = configuredProvider == null
+          ? const <ProviderAccountMapping>[]
+          : (await _database.providerAccountMappings())
+                .where(
+                  (mapping) => mapping.providerId == configuredProvider.id,
+                )
+                .toList();
+      final mappedAccountId = mappings.isEmpty
+          ? null
+          : mappings.first.accountId;
+      final accountId = accounts.any(
+        (account) => account.id == mappedAccountId,
+      )
+          ? mappedAccountId
+          : null;
+      // Never attribute an unknown sender to an arbitrary account.
+      if (configuredProvider == null || accountId == null) {
+        developer.log('mapping_found=false', name: 'FlowlySMS');
+        developer.log('mapping_missing', name: 'FlowlySMS');
+        await _bestEffort(
+          () => _database.createNotification(
+            'SMS provider needs mapping',
+            'Configure this SMS provider before importing its transactions.',
+          ),
+        );
+        return const SmsProcessingOutcome(
+          SmsProcessingDisposition.mappingMissing,
+        );
+      }
+      developer.log('mapping_found=true', name: 'FlowlySMS');
+      final candidate = result.candidate;
+      if (candidate.semantics == CandidateSemantics.internalTransfer) {
+        final mapping = mappings.first;
+        final outcome = await _database.saveInternalTransferObservation(
+          candidate: candidate,
+          providerId: configuredProvider.id!,
+          mappedAccountId: mapping.accountId!,
+          linkedAccountId: mapping.linkedAccountId,
+          source: TransactionSource.smsLive,
+          smsReceivedAt: event.receivedAt,
+          fingerprint: result.fingerprint,
+        );
+        final saved = outcome != SmsTransferSaveOutcome.duplicate;
+        developer.log(
+          'transfer_observation=${outcome.name}',
+          name: 'FlowlySMS',
+        );
+        developer.log('persistence_success=$saved', name: 'FlowlySMS');
+        if (outcome == SmsTransferSaveOutcome.pending) {
+          await _bestEffort(
+            () => _database.createNotification(
+              'Possible account transfer',
+              'Choose the linked owned account to confirm a detected transfer.',
+            ),
+          );
+        }
+        if (outcome == SmsTransferSaveOutcome.duplicate) {
+          developer.log('duplicate', name: 'FlowlySMS');
+          return const SmsProcessingOutcome(
+            SmsProcessingDisposition.duplicate,
+          );
+        }
+        if (outcome == SmsTransferSaveOutcome.pending) {
+          return const SmsProcessingOutcome(
+            SmsProcessingDisposition.transferPending,
+          );
+        }
+        return const SmsProcessingOutcome(SmsProcessingDisposition.persisted);
+      }
+      final merchant = candidate.merchant ?? candidate.provider;
+      final storedRules = await _database.merchantRules();
+      final category =
+          candidate.categorySuggestion ??
+          _categorization.suggest(
+            merchant: merchant,
+            merchantRules: storedRules.map(
+              (rule) => MerchantRule(
+                rule['normalized_merchant'] as String,
+                rule['category'] as String,
+              ),
+            ),
+            keywordRules: const [],
+          );
+      final status = result.disposition == DetectionDisposition.confirmed
+          ? ReviewStatus.confirmed
+          : ReviewStatus.needsReview;
+      final saved = await _database.saveDetectedTransaction(
+        createLiveSmsTransaction(
+          candidate: candidate,
+          merchant: merchant,
+          category: category,
+          accountId: accountId,
+          status: status,
+          smsReceivedAt: event.receivedAt,
+        ),
+        result.fingerprint,
       );
-      await LocalNotificationService.instance.show(
-        event: 'needsReview',
-        id: result.fingerprint.hashCode,
-        title: 'Transaction needs review',
-        body: 'A detected transaction from $merchant needs your confirmation.',
+      developer.log('persistence_success=$saved', name: 'FlowlySMS');
+      if (!saved) {
+        developer.log('duplicate', name: 'FlowlySMS');
+        return const SmsProcessingOutcome(SmsProcessingDisposition.duplicate);
+      }
+      if (status == ReviewStatus.needsReview) {
+        await _bestEffort(
+          () => _database.createNotification(
+            'Transaction needs review',
+            'A detected transaction from $merchant needs your confirmation.',
+          ),
+        );
+        await _bestEffort(
+          () => LocalNotificationService.instance.show(
+            event: 'needsReview',
+            id: result.fingerprint.hashCode,
+            title: 'Transaction needs review',
+            body:
+                'A detected transaction from $merchant needs your confirmation.',
+          ),
+        );
+      }
+      return const SmsProcessingOutcome(SmsProcessingDisposition.persisted);
+    } catch (_) {
+      developer.log('retryable_failure', name: 'FlowlySMS');
+      return const SmsProcessingOutcome(
+        SmsProcessingDisposition.retryableFailure,
       );
     }
-    return saved;
+  }
+}
+
+Future<void> _bestEffort(Future<void> Function() operation) async {
+  try {
+    await operation();
+  } catch (_) {
+    developer.log('notification_failed', name: 'FlowlySMS');
   }
 }

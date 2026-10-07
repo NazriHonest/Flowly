@@ -9,71 +9,436 @@ import '../../transactions/domain/entities/transaction.dart';
 import '../../../core/formatters/money_formatter.dart';
 import '../../../core/theme/app_colors.dart';
 
+
 class CategoriesScreen extends ConsumerWidget {
   const CategoriesScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(categoryListProvider);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Categories')),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => const CategoryFormScreen()),
-        ),
-        child: const Icon(Icons.add),
-      ),
-      body: categories.when(
-        loading: () => const AppLoadingList(),
-        error: (error, _) => AppErrorState(
-          title: 'Couldn’t load categories',
-          message: 'Please try again.',
-          onRetry: () => ref.invalidate(categoryListProvider),
-        ),
-        data: (items) => items.isEmpty
-      ? AppEmptyState(
-          icon: Icons.category_outlined,
-          title: 'No categories yet',
-          message: 'Create categories to organize your spending.',
-          actionLabel: 'Add category',
-          onAction: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const CategoryFormScreen()),
+
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Categories'),
+          bottom: const PreferredSize(
+            preferredSize: Size.fromHeight(56),
+            child: _CategoryTabBar(),
           ),
-        )
-      : ListView.separated(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
-          itemCount: items.length,
-          separatorBuilder: (_, _) => const Divider(height: 1),
-          itemBuilder: (_, index) {
-            final category = items[index];
-            return Card(
-              child: ListTile(
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 7,
+        ),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () => _openCategoryForm(context),
+          icon: const Icon(Icons.add_rounded),
+          label: const Text('Add category'),
+        ),
+        body: categories.when(
+          loading: () => const AppLoadingList(),
+          error: (error, _) => AppErrorState(
+            title: 'Couldn’t load categories',
+            message: 'Please try again.',
+            onRetry: () => ref.invalidate(categoryListProvider),
+          ),
+          data: (items) {
+            if (items.isEmpty) {
+              return AppEmptyState(
+                icon: Icons.category_outlined,
+                title: 'No categories yet',
+                message: 'Create income and expense categories to organize your transactions.',
+                actionLabel: 'Add category',
+                onAction: () => _openCategoryForm(context),
+              );
+            }
+
+            final expenseCategories = items
+                .where((category) => category.type.toLowerCase() == 'expense')
+                .toList();
+
+            final incomeCategories = items
+                .where((category) => category.type.toLowerCase() == 'income')
+                .toList();
+
+            return TabBarView(
+              children: [
+                _CategoryList(
+                  categories: expenseCategories,
+                  type: _CategoryTabType.expense,
+                  onAddCategory: () => _openCategoryForm(context),
                 ),
-                leading: CircleAvatar(
-                  backgroundColor: Color(category.color),
-                  child: Icon(
-                    IconData(category.icon, fontFamily: 'MaterialIcons'),
-                    color: AppColors.onPrimary,
-                  ),
+                _CategoryList(
+                  categories: incomeCategories,
+                  type: _CategoryTabType.income,
+                  onAddCategory: () => _openCategoryForm(context),
                 ),
-                title: Text(category.name),
-                subtitle: Text(category.type),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) =>
-                        CategoryDetailsScreen(category: category),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  void _openCategoryForm(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const CategoryFormScreen()),
+    );
+  }
+}
+
+class _CategoryTabBar extends StatelessWidget {
+  const _CategoryTabBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: TabBar(
+        dividerColor: Colors.transparent,
+        indicatorSize: TabBarIndicatorSize.tab,
+        indicator: BoxDecoration(
+          color: colors.surface,
+          borderRadius: BorderRadius.circular(11),
+          boxShadow: [
+            BoxShadow(
+              color: colors.shadow.withValues(alpha: 0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        labelPadding: EdgeInsets.zero,
+        labelColor: colors.onSurface,
+        unselectedLabelColor: colors.onSurfaceVariant,
+        tabs: const [
+          _CategoryTab(
+            icon: Icons.north_east_rounded,
+            label: 'Expense',
+            color: AppColors.expense,
+          ),
+          _CategoryTab(
+            icon: Icons.south_west_rounded,
+            label: 'Income',
+            color: AppColors.income,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryTab extends StatelessWidget {
+  const _CategoryTab({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tab(
+      height: 44,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 7),
+          Text(label, style: const TextStyle(fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+}
+
+enum _CategoryTabType { expense, income }
+
+class _CategoryList extends StatelessWidget {
+  const _CategoryList({
+    required this.categories,
+    required this.type,
+    required this.onAddCategory,
+  });
+
+  final List<dynamic> categories;
+  final _CategoryTabType type;
+  final VoidCallback onAddCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    if (categories.isEmpty) {
+      return _CategoryTypeEmptyState(type: type, onAddCategory: onAddCategory);
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 104),
+      itemCount: categories.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: _CategoryListHeader(type: type, count: categories.length),
+          );
+        }
+
+        final category = categories[index - 1];
+
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _CategoryCard(
+            category: category,
+            type: type,
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CategoryDetailsScreen(category: category),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CategoryListHeader extends StatelessWidget {
+  const _CategoryListHeader({required this.type, required this.count});
+
+  final _CategoryTabType type;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final isExpense = type == _CategoryTabType.expense;
+
+    final title = isExpense ? 'Expense categories' : 'Income categories';
+
+    final description = isExpense
+        ? 'Organize where your money is spent.'
+        : 'Organize where your money comes from.';
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                description,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        _CountBadge(count: count),
+      ],
+    );
+  }
+}
+
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
+    return Container(
+      constraints: const BoxConstraints(minWidth: 32, minHeight: 28),
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$count',
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: colors.onSurfaceVariant,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryCard extends StatelessWidget {
+  const _CategoryCard({
+    required this.category,
+    required this.type,
+    required this.onTap,
+  });
+
+  final dynamic category;
+  final _CategoryTabType type;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
+    final categoryColor = Color(category.color);
+
+    return Material(
+      color: colors.surface,
+      borderRadius: BorderRadius.circular(16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: colors.outlineVariant),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: categoryColor.withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: Icon(
+                  IconData(category.icon, fontFamily: 'MaterialIcons'),
+                  color: categoryColor,
+                  size: 23,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  category.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    color: colors.onSurface,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ),
-            );
-          },
+              const SizedBox(width: 12),
+              Container(
+                width: 34,
+                height: 34,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: colors.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: colors.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryTypeEmptyState extends StatelessWidget {
+  const _CategoryTypeEmptyState({
+    required this.type,
+    required this.onAddCategory,
+  });
+
+  final _CategoryTabType type;
+  final VoidCallback onAddCategory;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
+
+    final isExpense = type == _CategoryTabType.expense;
+
+    final color = isExpense ? AppColors.expense : AppColors.income;
+
+    final icon = isExpense
+        ? Icons.north_east_rounded
+        : Icons.south_west_rounded;
+
+    final title = isExpense ? 'No expense categories' : 'No income categories';
+
+    final message = isExpense
+        ? 'Create an expense category to organize your spending.'
+        : 'Create an income category to organize your earnings.';
+
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(32, 32, 32, 120),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, size: 32, color: color),
+            ),
+            const SizedBox(height: 18),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            const SizedBox(height: 7),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: colors.onSurfaceVariant,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: onAddCategory,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('Add category'),
+            ),
+          ],
         ),
       ),
     );
@@ -205,6 +570,7 @@ class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
     Icons.category,
     Icons.shopping_basket,
     Icons.restaurant,
+    Icons.wifi,
     Icons.directions_car,
     Icons.receipt_long,
     Icons.payments,

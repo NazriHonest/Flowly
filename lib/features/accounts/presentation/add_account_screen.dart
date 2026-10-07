@@ -23,7 +23,8 @@ class _AddAccountScreenState extends ConsumerState<AddAccountScreen> {
   late String type = widget.account?.type ?? 'cash';
   late String currency = widget.account?.currency ?? 'USD';
   late int color = widget.account?.color ?? AppColors.primary.toARGB32();
-  late int icon = widget.account?.icon ?? Icons.account_balance_wallet.codePoint;
+  late int icon =
+      widget.account?.icon ?? Icons.account_balance_wallet.codePoint;
   static const _icons = [
     Icons.account_balance_wallet,
     Icons.account_balance,
@@ -75,9 +76,7 @@ class _AddAccountScreenState extends ConsumerState<AddAccountScreen> {
             decoration: const InputDecoration(labelText: 'Currency'),
             items: const [
               DropdownMenuItem(value: 'USD', child: Text('USD')),
-              DropdownMenuItem(value: 'KES', child: Text('KES')),
-              DropdownMenuItem(value: 'EUR', child: Text('EUR')),
-              DropdownMenuItem(value: 'GBP', child: Text('GBP')),
+              DropdownMenuItem(value: 'SOS', child: Text('SOS')),
             ],
             onChanged: (value) => setState(() => currency = value!),
           ),
@@ -97,27 +96,31 @@ class _AddAccountScreenState extends ConsumerState<AddAccountScreen> {
           const Text('Icon'),
           Wrap(
             spacing: 8,
-            children: _icons.map((value) => ChoiceChip(
-              label: Icon(value),
-              selected: icon == value.codePoint,
-              onSelected: (_) => setState(() => icon = value.codePoint),
-            )).toList(),
+            children: _icons
+                .map(
+                  (value) => ChoiceChip(
+                    label: Icon(value),
+                    selected: icon == value.codePoint,
+                    onSelected: (_) => setState(() => icon = value.codePoint),
+                  ),
+                )
+                .toList(),
           ),
           const SizedBox(height: 20),
           const Text('Color'),
           Wrap(
             spacing: 8,
             children: AppColors.identityPalette
-                    .map((tone) => tone.toARGB32())
-                    .map(
-                      (value) => ChoiceChip(
-                        label: const Text(''),
-                        avatar: CircleAvatar(backgroundColor: Color(value)),
-                        selected: color == value,
-                        onSelected: (_) => setState(() => color = value),
-                      ),
-                    )
-                    .toList(),
+                .map((tone) => tone.toARGB32())
+                .map(
+                  (value) => ChoiceChip(
+                    label: const Text(''),
+                    avatar: CircleAvatar(backgroundColor: Color(value)),
+                    selected: color == value,
+                    onSelected: (_) => setState(() => color = value),
+                  ),
+                )
+                .toList(),
           ),
           const SizedBox(height: 24),
           FilledButton(

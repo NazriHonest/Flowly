@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/formatters/money_formatter.dart';
-import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/providers/transaction_provider.dart';
@@ -18,39 +17,27 @@ class AccountDetailsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final colors = Theme.of(context).colorScheme;
     final state = ref.watch(transactionListProvider);
 
     return Scaffold(
-      backgroundColor: isDark
-          ? AppColors.darkBackground
-          : AppColors.lightBackground,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(
-          color: isDark
-              ? AppColors.darkTextPrimary
-              : AppColors.lightTextPrimary,
-        ),
+        iconTheme: IconThemeData(color: colors.onSurface),
         title: Text(
           account.name,
           style: TextStyle(
-            color: isDark
-                ? AppColors.darkTextPrimary
-                : AppColors.lightTextPrimary,
+            color: colors.onSurface,
             fontWeight: FontWeight.w700,
           ),
         ),
         actions: [
           IconButton(
             style: IconButton.styleFrom(
-              backgroundColor: isDark
-                  ? AppColors.darkSurface
-                  : AppColors.lightSurface,
-              side: BorderSide(
-                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-              ),
+              backgroundColor: colors.surface,
+              side: BorderSide(color: colors.outlineVariant),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -58,9 +45,7 @@ class AccountDetailsScreen extends ConsumerWidget {
             icon: Icon(
               Icons.edit_outlined,
               size: 18,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: colors.onSurfaceVariant,
             ),
             onPressed: () => Navigator.push(
               context,
@@ -71,12 +56,8 @@ class AccountDetailsScreen extends ConsumerWidget {
           ),
           IconButton(
             style: IconButton.styleFrom(
-              backgroundColor: isDark
-                  ? AppColors.darkSurface
-                  : AppColors.lightSurface,
-              side: BorderSide(
-                color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-              ),
+              backgroundColor: colors.surface,
+              side: BorderSide(color: colors.outlineVariant),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
@@ -84,9 +65,7 @@ class AccountDetailsScreen extends ConsumerWidget {
             icon: Icon(
               Icons.archive_outlined,
               size: 18,
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: colors.onSurfaceVariant,
             ),
             onPressed: () async {
               if (!await showFlowlyConfirmation(
@@ -128,7 +107,7 @@ class AccountDetailsScreen extends ConsumerWidget {
             padding: EdgeInsets.zero,
             children: [
               // ── Hero card ─────────────────────────────────────────────
-              _HeroCard(account: account, balance: balance, isDark: isDark),
+              _HeroCard(account: account, balance: balance),
               // ── Detail rows ───────────────────────────────────────────
               Container(
                 margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
@@ -137,15 +116,9 @@ class AccountDetailsScreen extends ConsumerWidget {
                   vertical: 2,
                 ),
                 decoration: BoxDecoration(
-                  color: isDark
-                      ? AppColors.darkSurface
-                      : AppColors.lightSurface,
+                  color: colors.surface,
                   borderRadius: BorderRadius.circular(9),
-                  border: Border.all(
-                    color: isDark
-                        ? AppColors.darkBorder
-                        : AppColors.lightBorder,
-                  ),
+                  border: Border.all(color: colors.outlineVariant),
                 ),
                 child: Column(
                   children: [
@@ -155,20 +128,14 @@ class AccountDetailsScreen extends ConsumerWidget {
                           .split(' ')
                           .map((w) => w[0].toUpperCase() + w.substring(1))
                           .join(' '),
-                      isDark: isDark,
                     ),
-                    _DetailRow(
-                      label: 'Currency',
-                      value: account.currency,
-                      isDark: isDark,
-                    ),
+                    _DetailRow(label: 'Currency', value: account.currency),
                     _DetailRow(
                       label: 'Opening balance',
                       value: MoneyFormatter.format(
                         account.openingBalanceMinor,
                         code: account.currency,
                       ),
-                      isDark: isDark,
                     ),
                   ],
                 ),
@@ -185,9 +152,7 @@ class AccountDetailsScreen extends ConsumerWidget {
                           style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(
                                 fontWeight: FontWeight.w800,
-                                color: isDark
-                                    ? AppColors.darkTextPrimary
-                                    : AppColors.lightTextPrimary,
+                                color: colors.onSurface,
                               ),
                         ),
                       ),
@@ -195,7 +160,7 @@ class AccountDetailsScreen extends ConsumerWidget {
                         onPressed: () {},
                         child: Text(
                           'View All',
-                          style: TextStyle(color: AppColors.primary),
+                          style: TextStyle(color: colors.primary),
                         ),
                       ),
                     ],
@@ -220,27 +185,21 @@ class AccountDetailsScreen extends ConsumerWidget {
 // ── Hero card ─────────────────────────────────────────────────────────────────
 
 class _HeroCard extends StatelessWidget {
-  const _HeroCard({
-    required this.account,
-    required this.balance,
-    required this.isDark,
-  });
+  const _HeroCard({required this.account, required this.balance});
 
   final Account account;
   final int balance;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
     final acctColor = Color(account.color);
+    final colors = Theme.of(context).colorScheme;
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
       decoration: BoxDecoration(
-        color: isDark ? AppColors.darkSurface : AppColors.lightSurface,
+        color: colors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? AppColors.darkBorder : AppColors.lightBorder,
-        ),
+        border: Border.all(color: colors.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -249,21 +208,14 @@ class _HeroCard extends StatelessWidget {
           children: [
             Text(
               'Current balance',
-              style: TextStyle(
-                fontSize: 13,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
-              ),
+              style: TextStyle(fontSize: 13, color: colors.onSurfaceVariant),
             ),
             const SizedBox(height: 4),
             Text(
               MoneyFormatter.format(balance),
               style: Theme.of(context).textTheme.displaySmall?.copyWith(
                 fontWeight: FontWeight.w800,
-                color: isDark
-                    ? AppColors.darkTextPrimary
-                    : AppColors.lightTextPrimary,
+                color: colors.onSurface,
               ),
             ),
             const SizedBox(height: 12),
@@ -302,15 +254,13 @@ class _HeroCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: isDark ? AppColors.darkBorder : AppColors.lightMuted,
+                    color: colors.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
                     account.currency,
                     style: TextStyle(
-                      color: isDark
-                          ? AppColors.darkTextSecondary
-                          : AppColors.lightTextSecondary,
+                      color: colors.onSurfaceVariant,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -331,12 +281,7 @@ class _HeroCard extends StatelessWidget {
             const SizedBox(height: 8),
             Text(
               'Balance · last 30 days',
-              style: TextStyle(
-                fontSize: 11,
-                color: isDark
-                    ? AppColors.darkTextSecondary
-                    : AppColors.lightTextSecondary,
-              ),
+              style: TextStyle(fontSize: 11, color: colors.onSurfaceVariant),
             ),
           ],
         ),
@@ -388,14 +333,9 @@ class _SparklinePainter extends CustomPainter {
 // ── Detail row ────────────────────────────────────────────────────────────────
 
 class _DetailRow extends StatelessWidget {
-  const _DetailRow({
-    required this.label,
-    required this.value,
-    required this.isDark,
-  });
+  const _DetailRow({required this.label, required this.value});
   final String label;
   final String value;
-  final bool isDark;
 
   @override
   Widget build(BuildContext context) {
@@ -406,9 +346,7 @@ class _DetailRow extends StatelessWidget {
           Text(
             label,
             style: TextStyle(
-              color: isDark
-                  ? AppColors.darkTextSecondary
-                  : AppColors.lightTextSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
               fontSize: 14,
             ),
           ),
@@ -416,9 +354,7 @@ class _DetailRow extends StatelessWidget {
           Text(
             value,
             style: TextStyle(
-              color: isDark
-                  ? AppColors.darkTextPrimary
-                  : AppColors.lightTextPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 14,
               fontWeight: FontWeight.w600,
             ),

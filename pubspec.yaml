@@ -43,6 +43,7 @@ dependencies:
   crypto: ^3.0.7
   archive: ^4.0.7
   pdf: ^3.11.3
+  printing: ^5.14.2
   share_plus: ^12.0.1
   file_picker: ^10.3.10
   flutter_secure_storage: ^9.2.4
