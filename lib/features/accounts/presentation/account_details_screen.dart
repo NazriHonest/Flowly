@@ -1,7 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../../../core/formatters/money_formatter.dart';
+import '../../../core/layout/app_layout.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/providers/transaction_provider.dart';
@@ -100,9 +100,7 @@ class AccountDetailsScreen extends ConsumerWidget {
               )
               .toList();
           final balance = AccountBalanceCalculator.current(account, all);
-
           final recent = items.take(10).toList();
-
           return ListView(
             padding: EdgeInsets.zero,
             children: [
@@ -173,7 +171,7 @@ class AccountDetailsScreen extends ConsumerWidget {
                   ),
                 ),
               ],
-              const SizedBox(height: 32),
+              SizedBox(height: AppLayout.safeScrollBottom(context)),
             ],
           );
         },

@@ -131,7 +131,7 @@ class _DataToolsScreenState extends ConsumerState<DataToolsScreen> {
                         final confirmed = await showFlowlyConfirmation(
                           context,
                           title: 'Restore this backup?',
-                          message: 'Flowly validates the selected archive first. Restoring replaces local financial data and saved settings.',
+                          message: 'SpenFlo validates the selected archive first. Restoring replaces local financial data and saved settings.',
                           confirmLabel: 'Restore',
                         );
                         if (!confirmed || !mounted) return;

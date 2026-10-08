@@ -85,13 +85,12 @@ class MethodChannelAutomaticDetectionPlatform
 /// that state to attach its EventChannel listener.
 class AutomaticDetectionController extends StateNotifier<bool> {
   AutomaticDetectionController({
-    AutomaticDetectionStore store =
+    this._store =
         const SharedPreferencesAutomaticDetectionStore(),
     AutomaticDetectionPlatform platform =
         const MethodChannelAutomaticDetectionPlatform(),
     bool restoreOnCreate = true,
-  }) : _store = store,
-       _platform = platform,
+  }) : _platform = platform,
        super(false) {
     _restoration = restoreOnCreate
         ? _restoreAutomaticDetection()

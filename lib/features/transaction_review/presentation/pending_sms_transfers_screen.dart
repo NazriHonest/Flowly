@@ -20,7 +20,7 @@ class PendingSmsTransfersScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Possible account transfers')),
       body: pending.when(
         loading: () => const AppLoadingList(),
-        error: (_, __) => AppErrorState(
+        error: (_, _) => AppErrorState(
           title: 'Could not load transfers',
           message: 'Please try again.',
           onRetry: () =>

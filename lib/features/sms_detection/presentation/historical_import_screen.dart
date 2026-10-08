@@ -92,7 +92,7 @@ class _HistoricalImportScreenState
     if (error == 'permission') {
       return _MessageState(
         title: 'SMS permission was not granted',
-        detail: 'Historical import needs SMS access only while you explicitly start it. You can still use Flowly manually.',
+        detail: 'Historical import needs SMS access only while you explicitly start it. You can still use SpenFlo manually.',
         action: 'Try again',
         onAction: _start,
       );
@@ -134,7 +134,7 @@ class _HistoricalImportScreenState
               ),
               const SizedBox(height: 12),
               const Text(
-                'Flowly scans existing SMS locally using the same financial detector as automatic detection. Raw messages are discarded after processing.',
+                'SpenFlo scans existing SMS locally using the same financial detector as automatic detection. Raw messages are discarded after processing.',
               ),
               const Spacer(),
               SizedBox(

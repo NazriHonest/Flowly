@@ -40,7 +40,7 @@ class SecurityService {
       (await SharedPreferences.getInstance()).getInt('security.timeout') ?? 0;
   Future<bool> authenticateBiometric() async =>
       LocalAuthentication().authenticate(
-        localizedReason: 'Unlock Flowly',
+        localizedReason: 'Unlock SpenFlo',
         options: const AuthenticationOptions(
           biometricOnly: true,
           stickyAuth: true,

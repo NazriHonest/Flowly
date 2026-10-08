@@ -1,7 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/database/app_database.dart';
-import '../../transactions/domain/entities/transaction.dart';
+import '../../budgets/domain/services/budget_spending_calculator.dart';
 import 'local_notification_service.dart';
 
 /// Generates one notification per budget state in a budget period. State is
@@ -17,15 +17,11 @@ class BudgetNotificationEvaluator {
     final now = DateTime.now();
     final preferences = await SharedPreferences.getInstance();
     for (final budget in budgets) {
-      final spent = transactions
-          .where(
-            (transaction) =>
-                transaction.status == ReviewStatus.confirmed &&
-                transaction.type == TransactionType.expense &&
-                transaction.category == budget.category &&
-                _inBudgetPeriod(transaction.date, budget.period, now),
-          )
-          .fold<int>(0, (sum, transaction) => sum + transaction.amountMinor);
+      final spent = BudgetSpendingCalculator.spent(
+        budget,
+        transactions,
+        asOf: now,
+      );
       final ratio = budget.amountMinor == 0 ? 0 : spent / budget.amountMinor;
       final period = '${now.year}-${now.month}-${budget.period}';
       if (ratio >= 1) {
@@ -50,13 +46,6 @@ class BudgetNotificationEvaluator {
       }
     }
   }
-
-  bool _inBudgetPeriod(DateTime date, String period, DateTime now) =>
-      switch (period) {
-        'weekly' => !date.isBefore(now.subtract(const Duration(days: 6))),
-        'yearly' => date.year == now.year,
-        _ => date.year == now.year && date.month == now.month,
-      };
 
   Future<void> _emitOnce(
     SharedPreferences preferences, {

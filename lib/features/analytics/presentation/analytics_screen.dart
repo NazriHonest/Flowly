@@ -1,40 +1,24 @@
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
-
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import 'package:fl_chart/fl_chart.dart';
-
 import '../../../core/formatters/money_formatter.dart';
-
+import '../../../core/layout/app_layout.dart';
 import '../../../core/theme/app_colors.dart';
-
 import '../../../core/widgets/app_widgets.dart';
-
 import '../../accounts/providers/account_provider.dart';
-
 import '../../transactions/domain/entities/transaction.dart';
-
 import '../../transactions/presentation/transactions_screen.dart';
-
 import '../../transactions/providers/transaction_provider.dart';
 
 enum AnalyticsRange {
   sevenDays,
-
   thirtyDays,
-
   thisMonth,
-
   lastMonth,
-
   threeMonths,
-
   sixMonths,
-
   thisYear,
-
   custom,
 }
 
@@ -53,42 +37,31 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(transactionListProvider);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Analytics',
-
           style: TextStyle(fontWeight: FontWeight.w800),
         ),
       ),
 
       body: state.when(
         loading: () => const AppLoadingList(),
-
         error: (error, _) => AppErrorState(
           title: 'Something went wrong',
-
           message: 'We couldn’t load your analytics.',
-
           onRetry: () => ref.invalidate(transactionListProvider),
         ),
 
         data: (items) {
           final now = DateTime.now();
-
           final range = _customRange ?? _rangeFor(_range, now);
-
           final start = range.start;
-
           final end = range.end;
-
           final exclusiveEnd = DateTime(end.year, end.month, end.day + 1);
-
           final confirmed = items
               .where((item) => item.status == ReviewStatus.confirmed)
               .toList();
-
           final filtered = confirmed
               .where(
                 (item) =>
@@ -96,31 +69,21 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                     item.date.isBefore(exclusiveEnd),
               )
               .toList();
-
           final income = _sum(filtered, TransactionType.income);
-
           final expenses = _sum(filtered, TransactionType.expense);
-
           final netCashFlow = income - expenses;
-
           final savingsRate = income <= 0
               ? 0.0
               : ((income - expenses) / income) * 100;
-
           final days = end.difference(start).inDays + 1;
-
           final category = _group(
             filtered.where((item) => item.type == TransactionType.expense),
-
             (item) => item.category,
           );
-
           final merchant = _group(
             filtered.where((item) => item.type == TransactionType.expense),
-
             (item) => item.title,
           );
-
           final largestExpenses =
               filtered
                   .where((item) => item.type == TransactionType.expense)
@@ -128,28 +91,21 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                 ..sort((a, b) => b.amountMinor.compareTo(a.amountMinor));
 
           final accounts = ref.watch(accountListProvider).value ?? [];
-
           final accountDistribution = _group(
             filtered.where((item) => item.type == TransactionType.expense),
-
             (item) => item.accountId.toString(),
           );
-
           final accountNames = {
             for (final account in accounts) '${account.id}': account.name,
           };
-
           final previousRange = DateTimeRange(
             start: start.subtract(Duration(days: days)),
 
             end: start.subtract(const Duration(days: 1)),
           );
-
           final previousExclusiveEnd = DateTime(
             previousRange.end.year,
-
             previousRange.end.month,
-
             previousRange.end.day + 1,
           );
 
@@ -196,7 +152,12 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
 
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+              padding: const EdgeInsets.fromLTRB(
+                20,
+                8,
+                20,
+                AppLayout.scrollContentGap,
+              ),
 
               children: [
                 _RangeSelector(
@@ -671,7 +632,7 @@ class _RangeSelector extends StatelessWidget {
 
         itemCount: ranges.length,
 
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
 
         itemBuilder: (context, index) {
           final range = ranges[index];

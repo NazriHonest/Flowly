@@ -7,8 +7,8 @@ class LocalNotificationService {
   final _plugin = FlutterLocalNotificationsPlugin();
   static const _channel = AndroidNotificationChannel(
     'flowly_events',
-    'Flowly events',
-    description: 'Budget, goals, review and recurring events',
+    'SpenFlo events',
+    description: 'SpenFlo budget, goal, review and recurring alerts',
     importance: Importance.defaultImportance,
   );
   Future<void> initialize() async {

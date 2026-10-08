@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../../core/formatters/money_formatter.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../../core/layout/app_layout.dart';
 import '../../accounts/providers/account_provider.dart';
 import '../domain/entities/transaction.dart';
 import '../providers/transaction_provider.dart';
@@ -381,7 +381,12 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           onRefresh: () => ref.read(transactionListProvider.notifier).refresh(),
           child: ListView.builder(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+            padding: const EdgeInsets.fromLTRB(
+              16,
+              4,
+              16,
+              AppLayout.scrollContentGap,
+            ),
             itemCount: days.length,
             itemBuilder: (context, i) {
               final day = days[i];

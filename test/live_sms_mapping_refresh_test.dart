@@ -12,7 +12,6 @@ import 'package:flowly/features/sms_detection/domain/services/financial_sms_pipe
 import 'package:flowly/features/sms_detection/parsers/evc_plus_parser.dart';
 import 'package:flowly/features/sms_detection/parsers/generic_financial_parser.dart';
 import 'package:flowly/features/sms_detection/parsers/jeeb_parser.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

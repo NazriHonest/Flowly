@@ -31,3 +31,13 @@ final categoryListProvider =
     StateNotifierProvider<CategoryController, AsyncValue<List<Category>>>(
       (ref) => CategoryController(AppDatabase.instance),
     );
+
+/// Resolves a category from the canonical list while keeping detail screens
+/// reactive to edits made after navigation.
+final categoryByIdProvider = Provider.family<Category?, int>((ref, id) {
+  return ref
+      .watch(categoryListProvider)
+      .valueOrNull
+      ?.where((category) => category.id == id)
+      .firstOrNull;
+});

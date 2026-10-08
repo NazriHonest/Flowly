@@ -28,7 +28,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     _StepData(
       Icons.account_balance_wallet_outlined,
       'Take control of your finances',
-      'Flowly helps you understand your money, privately and clearly.',
+      'SpenFlo helps you understand your money, privately and clearly.',
     ),
     _StepData(
       Icons.receipt_long_outlined,
@@ -58,7 +58,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     _StepData(
       Icons.sms_outlined,
       'Automatic transaction detection',
-      'Flowly can detect supported financial messages locally. You can continue completely manually.',
+      'SpenFlo can detect supported financial messages locally. You can continue completely manually.',
     ),
     _StepData(
       Icons.account_balance_outlined,
@@ -107,7 +107,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   Widget build(BuildContext context) {
     final data = steps[step];
     final last = step == steps.length - 1;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     return Scaffold(
+      backgroundColor: step == 0
+          ? (dark ? const Color(0xFF031611) : const Color(0xFFFDFDFD))
+          : null,
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
@@ -129,10 +133,26 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 ],
               ),
               const Spacer(),
-              _Illustration(
-                icon: data.icon,
-                accent: step == 2 ? AppColors.warning : AppColors.primary,
-              ),
+              if (step == 0)
+                SizedBox(
+                  width: 240,
+                  child: AspectRatio(
+                    aspectRatio: 3 / 2,
+                    child: Image.asset(
+                      dark
+                          ? 'assets/logo_images/logo dark.png'
+                          : 'assets/logo_images/logo light.png',
+                      fit: BoxFit.contain,
+                      filterQuality: FilterQuality.high,
+                      semanticLabel: 'SpenFlo',
+                    ),
+                  ),
+                )
+              else
+                _Illustration(
+                  icon: data.icon,
+                  accent: step == 2 ? AppColors.warning : AppColors.primary,
+                ),
               const SizedBox(height: 28),
               Text(
                 data.title,

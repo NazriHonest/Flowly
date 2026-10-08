@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:sqflite/sqflite.dart' hide Transaction;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart' hide Transaction;
 import 'package:flowly/core/database/app_database.dart';
 import 'package:flowly/features/accounts/domain/entities/account.dart';

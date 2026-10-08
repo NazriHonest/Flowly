@@ -82,8 +82,9 @@ abstract class ProviderSmsParser implements FinancialSmsParser {
     String? raw,
     DateTime fallback,
   ) {
-    if (raw == null)
+    if (raw == null) {
       return (value: fallback, providerValue: null, valid: false);
+    }
     final providerValue = parseProviderTimestamp(raw);
     if (providerValue == null) {
       return (value: fallback, providerValue: null, valid: false);

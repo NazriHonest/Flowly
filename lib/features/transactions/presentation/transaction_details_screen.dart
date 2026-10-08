@@ -148,7 +148,7 @@ class TransactionDetailsScreen extends ConsumerWidget {
                 const _InformationDivider(),
                 _InformationRow(
                   icon: Icons.schedule_rounded,
-                  label: 'Added to Flowly',
+                  label: 'Added to SpenFlo',
                   value: transaction.createdAt == null
                       ? 'Unavailable'
                       : _formatDateTime(context, transaction.createdAt!),

@@ -61,8 +61,8 @@ Future<void> runSmsBackgroundWorker() async {
     return <String, Object?>{
       'retry': retry,
       'changed': changed,
-      if (acknowledgedId != null) 'acknowledgedId': acknowledgedId,
-      if (acknowledgedAt != null) 'acknowledgedAt': acknowledgedAt,
+      'acknowledgedId': ?acknowledgedId,
+      'acknowledgedAt': ?acknowledgedAt,
     };
   });
 

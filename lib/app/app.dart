@@ -12,8 +12,6 @@ import 'router.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/security/data/security_service.dart';
 import '../features/security/presentation/lock_screen.dart';
-import '../core/theme/app_colors.dart';
-
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FlowlyApp extends ConsumerStatefulWidget {
@@ -85,7 +83,7 @@ class _FlowlyAppState extends ConsumerState<FlowlyApp>
   Widget build(BuildContext context) {
     ref.watch(smsLiveListenerProvider);
     return MaterialApp(
-      title: 'Flowly',
+      title: 'SpenFlo',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
@@ -124,59 +122,36 @@ class _FlowlySplash extends StatelessWidget {
   const _FlowlySplash();
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [AppColors.heroGradientStart, AppColors.heroGradientEnd],
+  Widget build(BuildContext context) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final background = dark
+        ? const Color(0xFF011711)
+        : const Color(0xFFFDFFFE);
+    final asset = dark
+        ? 'assets/logo_images/Splash logo dark.png'
+        : 'assets/logo_images/splash logo light.png';
+
+    return Scaffold(
+      backgroundColor: background,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: AspectRatio(
+                aspectRatio: 3 / 2,
+                child: Image.asset(
+                  asset,
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  semanticLabel: 'SpenFlo. Know where your money goes.',
+                ),
+              ),
+            ),
+          ),
         ),
       ),
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 74,
-              height: 74,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .16),
-                borderRadius: BorderRadius.circular(24),
-              ),
-              child: const Icon(
-                Icons.account_balance_wallet_rounded,
-                color: Colors.white,
-                size: 36,
-              ),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Flowly',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 30,
-                fontWeight: FontWeight.w800,
-                letterSpacing: -.6,
-              ),
-            ),
-            const SizedBox(height: 6),
-            const Text(
-              'Money, made clear',
-              style: TextStyle(color: AppColors.heroTextMuted),
-            ),
-            const SizedBox(height: 34),
-            const SizedBox(
-              width: 22,
-              height: 22,
-              child: CircularProgressIndicator(
-                color: Colors.white,
-                strokeWidth: 2.5,
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
+    );
+  }
 }

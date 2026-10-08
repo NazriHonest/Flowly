@@ -18,7 +18,7 @@ class PossibleTransfersScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Possible transfers')),
       body: state.when(
         loading: () => const AppLoadingList(),
-        error: (_, __) => AppErrorState(
+        error: (_, _) => AppErrorState(
           title: 'Could not load possible transfers',
           message: 'Please try again.',
           onRetry: () => ref.read(transferCandidateListProvider.notifier).refresh(),
@@ -71,7 +71,7 @@ class PossibleTransferDetailsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Possible internal transfer')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
-        Text('Flowly found matching normalized transactions. Review them before changing your accounting.', style: Theme.of(context).textTheme.bodyLarge),
+        Text('SpenFlo found matching normalized transactions. Review them before changing your accounting.', style: Theme.of(context).textTheme.bodyLarge),
         const SizedBox(height: 12),
         side('FROM', account(candidate.outgoing.accountId), '-', candidate.outgoing.date, candidate.outgoing.type.name),
         const Icon(Icons.south_rounded),

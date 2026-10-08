@@ -1,4 +1,5 @@
 import 'package:flowly/core/formatters/money_formatter.dart';
+import 'package:flowly/core/layout/app_layout.dart';
 import 'package:flowly/core/theme/app_colors.dart';
 import 'package:flowly/core/widgets/app_widgets.dart';
 import 'package:flowly/features/goals/domain/entities/goal.dart';
@@ -51,7 +52,12 @@ class GoalsScreen extends ConsumerWidget {
                 ? _GoalsEmptyState(onAdd: () => _openAddGoal(context))
                 : ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                    padding: EdgeInsets.fromLTRB(
+                      16,
+                      8,
+                      16,
+                      AppLayout.safeScrollBottom(context),
+                    ),
                     children: [
                       _GoalsOverview(goals: goals),
 
@@ -327,7 +333,7 @@ class _GoalCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
@@ -343,22 +349,22 @@ class _GoalCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    width: 48,
-                    height: 48,
+                    width: 38,
+                    height: 38,
                     decoration: BoxDecoration(
                       color: progressColor.withValues(alpha: 0.10),
-                      borderRadius: BorderRadius.circular(15),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(
                       completed
                           ? Icons.check_circle_outline_rounded
                           : Icons.flag_outlined,
                       color: progressColor,
-                      size: 23,
+                      size: 19,
                     ),
                   ),
 
-                  const SizedBox(width: 13),
+                  const SizedBox(width: 10),
 
                   Expanded(
                     child: Column(
@@ -373,7 +379,7 @@ class _GoalCard extends StatelessWidget {
                           ),
                         ),
 
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 2),
 
                         Text(
                           goal.targetDate == null
@@ -393,51 +399,38 @@ class _GoalCard extends StatelessWidget {
                 ],
               ),
 
-              const SizedBox(height: 20),
+              const SizedBox(height: 11),
 
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: _GoalAmount(
-                      label: 'SAVED',
-                      amount: goal.currentMinor,
-                      color: progressColor,
-                    ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  Expanded(
-                    child: _GoalAmount(
-                      label: 'TARGET',
-                      amount: goal.targetMinor,
-                      alignment: CrossAxisAlignment.end,
-                    ),
-                  ),
-                ],
+              Text(
+                '${MoneyFormatter.format(goal.currentMinor)} saved / ${MoneyFormatter.format(goal.targetMinor)} target',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurface,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 9),
 
               ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: LinearProgressIndicator(
                   value: progress.clamp(0.0, 1.0),
-                  minHeight: 8,
+                  minHeight: 6,
                   backgroundColor: progressColor.withValues(alpha: 0.10),
                   color: progressColor,
                 ),
               ),
 
-              const SizedBox(height: 9),
+              const SizedBox(height: 7),
 
               Row(
                 children: [
                   Text(
                     completed
                         ? 'Goal reached'
-                        : '${(progress * 100).round()}% complete',
+                        : '${MoneyFormatter.format(remaining)} remaining',
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: progressColor,
                       fontWeight: FontWeight.w700,
@@ -446,15 +439,20 @@ class _GoalCard extends StatelessWidget {
 
                   const Spacer(),
 
-                  Text(
-                    completed
-                        ? 'Completed'
-                        : '${MoneyFormatter.format(remaining)} remaining',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: completed
-                          ? AppColors.income
-                          : colors.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
+                  Expanded(
+                    child: Text(
+                      goal.targetDate == null
+                          ? (completed ? 'Completed' : 'No target date')
+                          : _goalDate(context, goal.targetDate!),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: completed
+                            ? AppColors.income
+                            : colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
@@ -463,49 +461,6 @@ class _GoalCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _GoalAmount extends StatelessWidget {
-  const _GoalAmount({
-    required this.label,
-    required this.amount,
-    this.color,
-    this.alignment = CrossAxisAlignment.start,
-  });
-
-  final String label;
-  final int amount;
-  final Color? color;
-  final CrossAxisAlignment alignment;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: alignment,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.6,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          MoneyFormatter.format(amount),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: color,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -640,7 +595,12 @@ class _GoalsEmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+      padding: EdgeInsets.fromLTRB(
+        24,
+        24,
+        24,
+        AppLayout.safeScrollBottom(context),
+      ),
       children: [
         SizedBox(
           height: MediaQuery.sizeOf(context).height * 0.62,

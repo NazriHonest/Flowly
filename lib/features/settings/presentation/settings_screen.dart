@@ -176,7 +176,7 @@ class SettingsScreen extends ConsumerWidget {
           children: [
             Text('Appearance', style: Theme.of(sheet).textTheme.titleLarge),
             const SizedBox(height: 4),
-            const Text('Choose how Flowly looks on this device.'),
+            const Text('Choose how SpenFlo looks on this device.'),
             const SizedBox(height: 18),
             Row(
               children: ThemeMode.values

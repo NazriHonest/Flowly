@@ -1190,12 +1190,40 @@ class AppDatabase {
     if (category.id == null) {
       await database.insert('categories', {...values, 'created_at': now});
     } else {
-      await database.update(
-        'categories',
-        values,
-        where: 'id=?',
-        whereArgs: [category.id],
-      );
+      await database.transaction((transaction) async {
+        final existing = await transaction.query(
+          'categories',
+          columns: ['name'],
+          where: 'id=?',
+          whereArgs: [category.id],
+          limit: 1,
+        );
+        final previousName = existing.firstOrNull?['name'] as String?;
+
+        await transaction.update(
+          'categories',
+          values,
+          where: 'id=?',
+          whereArgs: [category.id],
+        );
+
+        final nextName = category.name.trim();
+        if (previousName != null && previousName != nextName) {
+          for (final table in [
+            'transactions',
+            'budgets',
+            'recurring_transactions',
+            'merchant_rules',
+          ]) {
+            await transaction.update(
+              table,
+              {'category': nextName},
+              where: 'category=?',
+              whereArgs: [previousName],
+            );
+          }
+        }
+      });
     }
   }
 

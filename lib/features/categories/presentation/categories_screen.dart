@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/widgets/app_widgets.dart';
+import '../../../core/layout/app_layout.dart';
 import '../domain/entities/category.dart';
 import '../providers/category_provider.dart';
 import '../../transactions/providers/transaction_provider.dart';
 import '../../transactions/domain/entities/transaction.dart';
-import '../../../core/formatters/money_formatter.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../budgets/providers/budget_provider.dart';
+import '../../categorization/providers/merchant_rule_provider.dart';
+import '../../recurring/providers/recurring_provider.dart';
+import '../../transactions/presentation/transaction_details_screen.dart';
+import '../../transactions/presentation/widgets/transaction_card.dart';
 
 
 class CategoriesScreen extends ConsumerWidget {
@@ -182,7 +187,12 @@ class _CategoryList extends StatelessWidget {
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 104),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        AppLayout.safeScrollBottom(context, hasFloatingActionButton: true),
+      ),
       itemCount: categories.length + 1,
       itemBuilder: (context, index) {
         if (index == 0) {
@@ -401,7 +411,12 @@ class _CategoryTypeEmptyState extends StatelessWidget {
 
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(32, 32, 32, 120),
+        padding: EdgeInsets.fromLTRB(
+          32,
+          32,
+          32,
+          AppLayout.safeScrollBottom(context, hasFloatingActionButton: true),
+        ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -451,53 +466,62 @@ class CategoryDetailsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final current = category.id == null
+        ? category
+        : ref.watch(categoryByIdProvider(category.id!)) ?? category;
     final related =
         (ref.watch(transactionListProvider).valueOrNull ??
                 const <Transaction>[])
             .where(
               (item) =>
-                  item.category == category.name &&
+                  item.category == current.name &&
                   item.status == ReviewStatus.confirmed,
             )
-            .toList();
+            .toList()
+          ..sort((a, b) => b.date.compareTo(a.date));
     return Scaffold(
       appBar: AppBar(
-        title: Text(category.name),
+        title: Text(current.name),
         actions: [
           IconButton(
             icon: const Icon(Icons.edit_outlined),
             onPressed: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => CategoryFormScreen(category: category),
+                builder: (_) => CategoryFormScreen(category: current),
               ),
             ),
           ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          AppLayout.safeScrollBottom(context),
+        ),
         children: [
           Container(
             width: 72,
             height: 72,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: Color(category.color).withValues(alpha: .14),
+              color: Color(current.color).withValues(alpha: .14),
               shape: BoxShape.circle,
             ),
             child: Icon(
-              IconData(category.icon, fontFamily: 'MaterialIcons'),
+              IconData(current.icon, fontFamily: 'MaterialIcons'),
               size: 32,
-              color: Color(category.color),
+              color: Color(current.color),
             ),
           ),
           const SizedBox(height: 20),
-          Text(category.name, style: Theme.of(context).textTheme.headlineSmall),
+          Text(current.name, style: Theme.of(context).textTheme.headlineSmall),
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Applicability'),
-            subtitle: Text(category.type),
+            subtitle: Text(current.type),
           ),
           const SizedBox(height: 12),
           Text(
@@ -510,24 +534,17 @@ class CategoryDetailsScreen extends ConsumerWidget {
               padding: EdgeInsets.symmetric(vertical: 14),
               child: Text('No transactions in this category yet.'),
             ),
-          ...related
-              .take(5)
-              .map(
-                (item) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    child: Icon(
-                      IconData(category.icon, fontFamily: 'MaterialIcons'),
-                      size: 17,
-                    ),
-                  ),
-                  title: Text(item.title),
-                  subtitle: Text(
-                    item.date.toLocal().toString().split(' ').first,
-                  ),
-                  trailing: Text(MoneyFormatter.format(item.amountMinor)),
+          const SizedBox(height: 10),
+          ...related.take(5).map(
+            (item) => TransactionCard(
+              transaction: item,
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TransactionDetailsScreen(transaction: item),
                 ),
               ),
+            ),
+          ),
           const SizedBox(height: 20),
           OutlinedButton.icon(
             icon: const Icon(Icons.archive_outlined),
@@ -543,7 +560,7 @@ class CategoryDetailsScreen extends ConsumerWidget {
               }
               await ref
                   .read(categoryListProvider.notifier)
-                  .archive(category.id!);
+                  .archive(current.id!);
               if (context.mounted) Navigator.pop(context);
             },
           ),
@@ -590,7 +607,12 @@ class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
     body: Form(
       key: _formKey,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.fromLTRB(
+          20,
+          20,
+          20,
+          AppLayout.safeScrollBottom(context),
+        ),
         children: [
           TextFormField(
             controller: _name,
@@ -651,17 +673,28 @@ class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     try {
+      final name = _name.text.trim();
+      final categoryWasRenamed =
+          widget.category != null && widget.category!.name != name;
       await ref
           .read(categoryListProvider.notifier)
           .save(
             Category(
               id: widget.category?.id,
-              name: _name.text.trim(),
+              name: name,
               icon: _icon,
               color: _color,
               type: _type,
             ),
           );
+      if (categoryWasRenamed) {
+        await Future.wait([
+          ref.read(transactionListProvider.notifier).refresh(),
+          ref.read(budgetListProvider.notifier).refresh(),
+          ref.read(recurringListProvider.notifier).refresh(),
+          ref.read(merchantRuleListProvider.notifier).refresh(),
+        ]);
+      }
       if (mounted) Navigator.pop(context);
     } catch (_) {
       if (mounted) {

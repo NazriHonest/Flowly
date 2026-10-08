@@ -2,11 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/formatters/money_formatter.dart';
+import '../../../core/layout/app_layout.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../accounts/domain/services/account_balance_calculator.dart';
 import '../../accounts/providers/account_provider.dart';
 import '../../budgets/providers/budget_provider.dart';
+import '../../budgets/domain/services/budget_spending_calculator.dart';
+import '../../budgets/presentation/budgets_screen.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/presentation/transaction_details_screen.dart';
 import '../../transactions/presentation/transaction_presentation.dart';
@@ -75,6 +78,16 @@ class DashboardScreen extends ConsumerWidget {
               .where((item) => item.status == ReviewStatus.needsReview)
               .length;
 
+          final totalBudgetLimit = budgets.fold<int>(
+            0,
+            (sum, budget) => sum + budget.amountMinor,
+          );
+          final totalBudgetSpent = budgets.fold<int>(
+            0,
+            (sum, budget) =>
+                sum + BudgetSpendingCalculator.spent(budget, confirmed),
+          );
+
           final recentTransactions =
               items
                   .where((item) => item.status != ReviewStatus.ignored)
@@ -82,7 +95,12 @@ class DashboardScreen extends ConsumerWidget {
                 ..sort(compareTransactionsByCreatedAtDescending);
 
           return ListView(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            padding: const EdgeInsets.fromLTRB(
+              16,
+              8,
+              16,
+              AppLayout.scrollContentGap,
+            ),
             children: [
               _BalanceHero(
                 balance: balance,
@@ -97,45 +115,14 @@ class DashboardScreen extends ConsumerWidget {
 
               const SizedBox(height: 28),
 
-              _SectionHeader(
-                title: 'Budget progress',
-                subtitle: budgets.isEmpty
-                    ? 'Stay on top of your spending limits'
-                    : '${budgets.length} active ${budgets.length == 1 ? 'budget' : 'budgets'}',
+              _OverallBudgetCard(
+                spent: totalBudgetSpent,
+                limit: totalBudgetLimit,
+                budgetCount: budgets.length,
+                onViewAll: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const BudgetsScreen()),
+                ),
               ),
-
-              const SizedBox(height: 12),
-
-              if (budgets.isEmpty)
-                const _InlineEmpty(
-                  icon: Icons.account_balance_wallet_outlined,
-                  title: 'No active budgets',
-                  message: 'Create a budget to keep your spending on track.',
-                )
-              else
-                ...budgets.take(3).map((budget) {
-                  final spent = confirmed
-                      .where(
-                        (item) =>
-                            item.type == TransactionType.expense &&
-                            item.category == budget.category,
-                      )
-                      .fold<int>(0, (sum, item) => sum + item.amountMinor);
-
-                  final progress = budget.amountMinor == 0
-                      ? 0.0
-                      : spent / budget.amountMinor;
-
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: _BudgetProgressTile(
-                      name: budget.name,
-                      spent: spent,
-                      total: budget.amountMinor,
-                      progress: progress,
-                    ),
-                  );
-                }),
 
               const SizedBox(height: 20),
 
@@ -588,36 +575,39 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _BudgetProgressTile extends StatelessWidget {
-  const _BudgetProgressTile({
-    required this.name,
+class _OverallBudgetCard extends StatelessWidget {
+  const _OverallBudgetCard({
     required this.spent,
-    required this.total,
-    required this.progress,
+    required this.limit,
+    required this.budgetCount,
+    required this.onViewAll,
   });
 
-  final String name;
   final int spent;
-  final int total;
-  final double progress;
+  final int limit;
+  final int budgetCount;
+  final VoidCallback onViewAll;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
 
+    final semanticColors = FlowlySemanticColors.of(context);
+    final progress = limit <= 0 ? 0.0 : spent / limit;
     final progressColor = progress >= 1
-        ? AppColors.expense
+        ? semanticColors.expenseForeground
         : progress >= 0.8
-        ? AppColors.warning
-        : AppColors.primary;
+        ? semanticColors.warningForeground
+        : colors.primary;
 
-    final percentage = (progress * 100).clamp(0, 999).round();
+    final percentage = limit <= 0 ? 0 : (progress * 100).round();
 
-    final remaining = total - spent;
+    final remaining = limit - spent;
+    final overBudget = remaining < 0;
 
     return Container(
-      padding: const EdgeInsets.all(15),
+      padding: const EdgeInsets.fromLTRB(16, 15, 16, 10),
       decoration: BoxDecoration(
         color: colors.surface,
         borderRadius: BorderRadius.circular(18),
@@ -636,7 +626,7 @@ class _BudgetProgressTile extends StatelessWidget {
                   borderRadius: BorderRadius.circular(13),
                 ),
                 child: Icon(
-                  Icons.savings_outlined,
+                  Icons.account_balance_wallet_outlined,
                   color: progressColor,
                   size: 21,
                 ),
@@ -649,16 +639,16 @@ class _BudgetProgressTile extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      name,
+                      'Overall Budget',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      '${MoneyFormatter.format(spent)} of ${MoneyFormatter.format(total)}',
+                      'Aggregate of active budget periods',
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
                       ),
@@ -688,6 +678,27 @@ class _BudgetProgressTile extends StatelessWidget {
 
           const SizedBox(height: 14),
 
+          Row(
+            children: [
+              Expanded(
+                child: _BudgetSummaryMetric(
+                  label: 'SPENT',
+                  value: MoneyFormatter.format(spent),
+                  color: progressColor,
+                ),
+              ),
+              Expanded(
+                child: _BudgetSummaryMetric(
+                  label: 'LIMIT',
+                  value: MoneyFormatter.format(limit),
+                  alignment: CrossAxisAlignment.end,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 12),
+
           ClipRRect(
             borderRadius: BorderRadius.circular(999),
             child: LinearProgressIndicator(
@@ -703,7 +714,7 @@ class _BudgetProgressTile extends StatelessWidget {
           Row(
             children: [
               Icon(
-                progress >= 1
+                overBudget
                     ? Icons.warning_amber_rounded
                     : Icons.account_balance_wallet_outlined,
                 size: 14,
@@ -712,23 +723,86 @@ class _BudgetProgressTile extends StatelessWidget {
               const SizedBox(width: 5),
               Expanded(
                 child: Text(
-                  progress >= 1
-                      ? '${MoneyFormatter.format(spent - total)} over budget'
+                  overBudget
+                      ? '${MoneyFormatter.format(remaining.abs())} over budget'
                       : '${MoneyFormatter.format(remaining)} remaining',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: progress >= 1
-                        ? AppColors.expense
+                    color: overBudget
+                        ? progressColor
                         : colors.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
+              Text(
+                '$budgetCount active ${budgetCount == 1 ? 'budget' : 'budgets'}',
+                maxLines: 1,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: colors.onSurfaceVariant,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ],
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: onViewAll,
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('View all budgets'),
+                  SizedBox(width: 5),
+                  Icon(Icons.arrow_forward_rounded, size: 17),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+class _BudgetSummaryMetric extends StatelessWidget {
+  const _BudgetSummaryMetric({
+    required this.label,
+    required this.value,
+    this.color,
+    this.alignment = CrossAxisAlignment.start,
+  });
+
+  final String label;
+  final String value;
+  final Color? color;
+  final CrossAxisAlignment alignment;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: alignment,
+    children: [
+      Text(
+        label,
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w700,
+          letterSpacing: .6,
+        ),
+      ),
+      const SizedBox(height: 2),
+      Text(
+        value,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleMedium?.copyWith(
+          color: color,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    ],
+  );
 }
 
 class _TopCategoriesPanel extends StatelessWidget {

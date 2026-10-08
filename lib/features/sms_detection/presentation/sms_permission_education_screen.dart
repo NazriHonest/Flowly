@@ -36,7 +36,7 @@ class _SmsPermissionEducationScreenState
           ),
           const SizedBox(height: 12),
           const Text(
-            'Flowly processes supported financial messages on this device. You remain in control at every step.',
+            'SpenFlo processes supported financial messages on this device. You remain in control at every step.',
           ),
           const SizedBox(height: 20),
           const FlowlySurface(
@@ -129,8 +129,9 @@ class _SmsPermissionEducationScreenState
                                 onPressed: () async {
                                   await const SmsPermissionBridge()
                                       .openAppSettings();
-                                  if (dialogContext.mounted)
+                                  if (dialogContext.mounted) {
                                     Navigator.pop(dialogContext);
+                                  }
                                 },
                                 child: const Text('Open settings'),
                               ),

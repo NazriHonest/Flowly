@@ -18,7 +18,7 @@ class HelpSupportScreen extends StatelessWidget {
           const SizedBox(height: 28),
 
           _SectionTitle(
-            title: 'Using Flowly',
+            title: 'Using SpenFlo',
             subtitle: 'Learn how the main finance features work.',
           ),
 
@@ -91,7 +91,7 @@ class HelpSupportScreen extends StatelessWidget {
               _HelpAnswerSection(
                 title: 'Recurring transactions',
                 text:
-                    'Recurring transactions help Flowly represent payments or '
+                    'Recurring transactions help SpenFlo represent payments or '
                     'income that repeat on a schedule. When the next occurrence '
                     'is due, a confirmed transaction entry is generated.',
               ),
@@ -112,19 +112,19 @@ class HelpSupportScreen extends StatelessWidget {
             icon: Icons.auto_awesome_outlined,
             title: 'How automatic detection works',
             description:
-                'Flowly can detect supported financial transactions on-device.',
+                'SpenFlo can detect supported financial transactions on-device.',
             children: [
               _HelpAnswerSection(
                 title: 'Optional feature',
                 text:
                     'Automatic detection is optional. You can continue using '
-                    'Flowly manually without enabling SMS access.',
+                    'SpenFlo manually without enabling SMS access.',
               ),
               _HelpAnswerSection(
                 title: 'On-device processing',
                 text:
                     'Supported financial messages are processed on your device '
-                    'to identify transaction information. Flowly stores the '
+                    'to identify transaction information. SpenFlo stores the '
                     'normalized financial transaction, not the raw SMS body.',
               ),
             ],
@@ -135,7 +135,7 @@ class HelpSupportScreen extends StatelessWidget {
           const _HelpTopic(
             icon: Icons.sms_outlined,
             title: 'SMS permissions',
-            description: 'Why Flowly may request access to financial messages.',
+            description: 'Why SpenFlo may request access to financial messages.',
             children: [
               _HelpAnswerSection(
                 title: 'Why permission is requested',
@@ -144,7 +144,7 @@ class HelpSupportScreen extends StatelessWidget {
                     'financial transaction detection.',
               ),
               _HelpAnswerSection(
-                title: 'Using Flowly without SMS',
+                title: 'Using SpenFlo without SMS',
                 text:
                     'SMS permission is not required for manual finance tracking. '
                     'You can add and manage transactions yourself.',
@@ -158,18 +158,18 @@ class HelpSupportScreen extends StatelessWidget {
             icon: Icons.fact_check_outlined,
             title: 'Duplicates & Needs Review',
             description:
-                'How Flowly handles repeated and uncertain detections.',
+                'How SpenFlo handles repeated and uncertain detections.',
             children: [
               _HelpAnswerSection(
                 title: 'Duplicate protection',
                 text:
-                    'Flowly fingerprints detected transactions to help prevent '
+                    'SpenFlo fingerprints detected transactions to help prevent '
                     'the same financial event from being imported more than once.',
               ),
               _HelpAnswerSection(
                 title: 'Needs Review',
                 text:
-                    'When Flowly is not confident enough about a detected '
+                    'When SpenFlo is not confident enough about a detected '
                     'transaction, it can place the item in Needs Review instead '
                     'of silently treating uncertain information as confirmed.',
               ),
@@ -200,12 +200,12 @@ class HelpSupportScreen extends StatelessWidget {
               _HelpAnswerSection(
                 title: 'Backup & restore',
                 text:
-                    'You can create a local backup and restore a supported Flowly '
+                    'You can create a local backup and restore a supported SpenFlo '
                     'backup when needed.',
               ),
               _HelpAnswerSection(
                 title: 'Raw messages',
-                text: 'Raw SMS bodies are not included in Flowly exports or backups.',
+                text: 'Raw SMS bodies are not included in SpenFlo exports or backups.',
               ),
             ],
           ),
@@ -220,7 +220,7 @@ class HelpSupportScreen extends StatelessWidget {
               _HelpAnswerSection(
                 title: 'App lock',
                 text:
-                    'Flowly can protect access with your PIN. When supported and '
+                    'SpenFlo can protect access with your PIN. When supported and '
                     'enabled, biometric authentication can also be used to unlock '
                     'the app.',
               ),
@@ -288,7 +288,7 @@ class PrivacyInformationScreen extends StatelessWidget {
                 const SizedBox(height: 7),
 
                 Text(
-                  'Flowly is designed around local, privacy-conscious '
+                  'SpenFlo is designed around local, privacy-conscious '
                   'financial tracking.',
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodyMedium?.copyWith(
@@ -303,7 +303,7 @@ class PrivacyInformationScreen extends StatelessWidget {
           const SizedBox(height: 28),
 
           _SectionTitle(
-            title: 'How Flowly protects your data',
+            title: 'How SpenFlo protects your data',
             subtitle: 'The core privacy principles used throughout the app.',
           ),
 
@@ -319,7 +319,7 @@ class PrivacyInformationScreen extends StatelessWidget {
               _PrivacyRow(
                 Icons.sms_outlined,
                 'Raw SMS is not stored',
-                'Flowly stores normalized financial information instead of the raw message body.',
+                'SpenFlo stores normalized financial information instead of the raw message body.',
               ),
               _PrivacyRow(
                 Icons.storage_outlined,
@@ -334,7 +334,7 @@ class PrivacyInformationScreen extends StatelessWidget {
               _PrivacyRow(
                 Icons.backup_outlined,
                 'Private backups',
-                'Flowly backups exclude raw financial message text.',
+                'SpenFlo backups exclude raw financial message text.',
               ),
               _PrivacyRow(
                 Icons.toggle_on_outlined,
@@ -373,7 +373,7 @@ class PrivacyInformationScreen extends StatelessWidget {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'You can use Flowly as a manual finance tracker '
+                    'You can use SpenFlo as a manual finance tracker '
                     'without granting SMS access.',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       height: 1.45,
@@ -397,8 +397,12 @@ class AboutScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final dark = theme.brightness == Brightness.dark;
 
     return Scaffold(
+      backgroundColor: dark
+          ? const Color(0xFF031611)
+          : const Color(0xFFFDFDFD),
       appBar: AppBar(title: const Text('About')),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
@@ -406,44 +410,23 @@ class AboutScreen extends StatelessWidget {
           const SizedBox(height: 16),
 
           Center(
-            child: Container(
-              width: 82,
-              height: 82,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [AppColors.primaryDark, AppColors.primary],
+            child: SizedBox(
+              width: 280,
+              child: AspectRatio(
+                aspectRatio: 3 / 2,
+                child: Image.asset(
+                  dark
+                      ? 'assets/logo_images/logo dark.png'
+                      : 'assets/logo_images/logo light.png',
+                  fit: BoxFit.contain,
+                  filterQuality: FilterQuality.high,
+                  semanticLabel: 'SpenFlo',
                 ),
-                borderRadius: BorderRadius.circular(24),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.20),
-                    blurRadius: 22,
-                    offset: const Offset(0, 9),
-                  ),
-                ],
-              ),
-              child: const Icon(
-                Icons.show_chart_rounded,
-                color: AppColors.onPrimary,
-                size: 42,
               ),
             ),
           ),
 
-          const SizedBox(height: 18),
-
-          Text(
-            'Flowly',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.4,
-            ),
-          ),
-
-          const SizedBox(height: 4),
+          const SizedBox(height: 8),
 
           Text(
             'Version 1.0.0',
@@ -456,7 +439,7 @@ class AboutScreen extends StatelessWidget {
           const SizedBox(height: 10),
 
           Text(
-            'Your Money. Your Control.',
+            'Know where your money goes.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: AppColors.primary,
@@ -477,7 +460,7 @@ class AboutScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'About Flowly',
+                  'About SpenFlo',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w800,
                   ),
@@ -486,7 +469,7 @@ class AboutScreen extends StatelessWidget {
                 const SizedBox(height: 10),
 
                 Text(
-                  'Flowly is a privacy-first personal finance app '
+                  'SpenFlo is a privacy-first personal finance app '
                   'designed to help you understand and manage your '
                   'money while keeping sensitive financial processing '
                   'on your device.',
@@ -546,7 +529,7 @@ class AboutScreen extends StatelessWidget {
           const SizedBox(height: 32),
 
           Text(
-            'FLOWLY',
+            'SPENFLO',
             textAlign: TextAlign.center,
             style: theme.textTheme.labelSmall?.copyWith(
               color: colors.onSurfaceVariant,
@@ -609,7 +592,7 @@ class _HelpHero extends StatelessWidget {
                 const SizedBox(height: 5),
 
                 Text(
-                  'Find quick answers about using Flowly and '
+                  'Find quick answers about using SpenFlo and '
                   'managing your financial data.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: colors.onSurfaceVariant,

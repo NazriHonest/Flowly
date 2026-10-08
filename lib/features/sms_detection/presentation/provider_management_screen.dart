@@ -212,7 +212,7 @@ class _ProviderDetailsScreenState extends State<ProviderDetailsScreen> {
         children: [
           const FlowlySurface(
             child: Text(
-              'Map this recognized provider to Flowly accounts. This does not assume any SIM-to-account relationship.',
+              'Map this recognized provider to SpenFlo accounts. This does not assume any SIM-to-account relationship.',
             ),
           ),
           const SizedBox(height: 14),

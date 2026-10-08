@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/formatters/money_formatter.dart';
+import '../../../core/layout/app_layout.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../domain/entities/recurring_transaction.dart';
@@ -70,7 +71,12 @@ class RecurringScreen extends ConsumerWidget {
                 )
               : ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    AppLayout.safeScrollBottom(context),
+                  ),
                   itemCount: items.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (_, index) => _RecurringCard(

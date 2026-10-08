@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/formatters/money_formatter.dart';
+import '../../../core/layout/app_layout.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/providers/transaction_provider.dart';
 import '../domain/entities/budget.dart';
+import '../domain/services/budget_spending_calculator.dart';
 import '../providers/budget_provider.dart';
 import 'budget_form_screen.dart';
 
@@ -56,7 +58,12 @@ class BudgetsScreen extends ConsumerWidget {
               onRefresh: () => _refresh(ref),
               child: ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(24, 24, 24, 32),
+                padding: EdgeInsets.fromLTRB(
+                  24,
+                  24,
+                  24,
+                  AppLayout.safeScrollBottom(context),
+                ),
                 children: [
                   SizedBox(
                     height: MediaQuery.sizeOf(context).height * 0.62,
@@ -122,7 +129,12 @@ class BudgetsScreen extends ConsumerWidget {
             onRefresh: () => _refresh(ref),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+              padding: EdgeInsets.fromLTRB(
+                16,
+                8,
+                16,
+                AppLayout.safeScrollBottom(context),
+              ),
               children: [
                 _BudgetOverview(
                   spent: spent,
@@ -180,29 +192,30 @@ class BudgetDetailsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final current = budget.id == null
+        ? budget
+        : ref
+                  .watch(budgetListProvider)
+                  .valueOrNull
+                  ?.where((item) => item.id == budget.id)
+                  .firstOrNull ??
+              budget;
     final transactions = ref.watch(transactionListProvider).value ?? [];
 
     final related =
-        transactions
-            .where(
-              (transaction) =>
-                  transaction.status == ReviewStatus.confirmed &&
-                  transaction.type == TransactionType.expense &&
-                  transaction.category == budget.category,
-            )
+        BudgetSpendingCalculator.countedTransactions(current, transactions)
             .toList()
           ..sort((a, b) => b.date.compareTo(a.date));
 
-    final spent = related.fold<int>(
-      0,
-      (sum, transaction) => sum + transaction.amountMinor,
-    );
+    final spent = BudgetSpendingCalculator.spent(current, transactions);
 
-    final ratio = budget.amountMinor == 0 ? 0.0 : spent / budget.amountMinor;
+    final ratio = current.amountMinor == 0
+        ? 0.0
+        : spent / current.amountMinor;
 
-    final color = _progressColor(ratio, budget.alertThreshold);
+    final color = _progressColor(ratio, current.alertThreshold);
 
-    final difference = budget.amountMinor - spent;
+    final difference = current.amountMinor - spent;
 
     final isOverBudget = difference < 0;
 
@@ -210,7 +223,7 @@ class BudgetDetailsScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(budget.name),
+        title: Text(current.name),
         actions: [
           _RoundAction(
             icon: Icons.edit_outlined,
@@ -218,7 +231,7 @@ class BudgetDetailsScreen extends ConsumerWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => BudgetFormScreen(budget: budget),
+                builder: (_) => BudgetFormScreen(budget: current),
               ),
             ),
           ),
@@ -236,7 +249,7 @@ class BudgetDetailsScreen extends ConsumerWidget {
                 return;
               }
 
-              await ref.read(budgetListProvider.notifier).archive(budget.id!);
+              await ref.read(budgetListProvider.notifier).archive(current.id!);
 
               if (context.mounted) {
                 Navigator.pop(context);
@@ -247,10 +260,15 @@ class BudgetDetailsScreen extends ConsumerWidget {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          AppLayout.safeScrollBottom(context),
+        ),
         children: [
           _BudgetDetailsHero(
-            budget: budget,
+            budget: current,
             spent: spent,
             ratio: ratio,
             color: color,
@@ -269,21 +287,21 @@ class BudgetDetailsScreen extends ConsumerWidget {
 
           _DetailsTable(
             rows: [
-              ('Category', budget.category, Icons.category_outlined),
+              ('Category', current.category, Icons.category_outlined),
               (
                 'Budget limit',
-                MoneyFormatter.format(budget.amountMinor),
+                MoneyFormatter.format(current.amountMinor),
                 Icons.account_balance_wallet_outlined,
               ),
               (
                 'Period',
-                _capitalize(budget.period),
+                _capitalize(current.period),
                 Icons.calendar_month_outlined,
               ),
-              ('Start date', _date(budget.startDate), Icons.event_outlined),
+              ('Start date', _date(current.startDate), Icons.event_outlined),
               (
                 'Alert threshold',
-                '${(budget.alertThreshold * 100).round()}%',
+                '${(current.alertThreshold * 100).round()}%',
                 Icons.notifications_none_rounded,
               ),
             ],
@@ -292,9 +310,9 @@ class BudgetDetailsScreen extends ConsumerWidget {
           const SizedBox(height: 26),
 
           _SectionHeader(
-            title: 'Related transactions',
+            title: 'Transactions counted this period',
             subtitle: related.isEmpty
-                ? 'No spending recorded'
+                ? 'No qualifying spending in the active period'
                 : '${related.length} ${related.length == 1 ? 'transaction' : 'transactions'}',
           ),
 
@@ -602,12 +620,6 @@ class _BudgetCard extends StatelessWidget {
         ? 'Near limit'
         : 'On track';
 
-    final statusIcon = ratio >= 1
-        ? Icons.error_outline_rounded
-        : ratio >= budget.alertThreshold
-        ? Icons.warning_amber_rounded
-        : Icons.check_circle_outline_rounded;
-
     return Material(
       color: colors.surface,
       borderRadius: BorderRadius.circular(20),
@@ -615,7 +627,7 @@ class _BudgetCard extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
             border: Border.all(color: colors.outlineVariant),
@@ -629,10 +641,10 @@ class _BudgetCard extends StatelessWidget {
                   _CategoryIcon(
                     category: budget.category,
                     color: color,
-                    size: 46,
+                    size: 38,
                   ),
 
-                  const SizedBox(width: 13),
+                  const SizedBox(width: 10),
 
                   Expanded(
                     child: Column(
@@ -663,51 +675,56 @@ class _BudgetCard extends StatelessWidget {
 
                   const SizedBox(width: 8),
 
-                  _StatusPill(text: status, color: color, icon: statusIcon),
-                ],
-              ),
-
-              const SizedBox(height: 20),
-
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Expanded(
-                    child: _BudgetAmount(
-                      label: 'SPENT',
-                      value: MoneyFormatter.format(spent),
-                      valueColor: color,
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 5,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _BudgetAmount(
-                      label: 'BUDGET',
-                      value: MoneyFormatter.format(budget.amountMinor),
-                      alignment: CrossAxisAlignment.end,
+                    decoration: BoxDecoration(
+                      color: color.withValues(alpha: .1),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: Text(
+                      '${(ratio * 100).round()}%',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: color,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ],
               ),
 
-              const SizedBox(height: 14),
+              const SizedBox(height: 11),
 
-              ClipRRect(
-                borderRadius: BorderRadius.circular(20),
-                child: LinearProgressIndicator(
-                  value: ratio.clamp(0.0, 1.0),
-                  minHeight: 8,
-                  backgroundColor: color.withValues(alpha: 0.10),
-                  color: color,
+              Text(
+                '${MoneyFormatter.format(spent)} spent / ${MoneyFormatter.format(budget.amountMinor)} limit',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: colors.onSurface,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
 
               const SizedBox(height: 9),
 
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: LinearProgressIndicator(
+                  value: ratio.clamp(0.0, 1.0),
+                  minHeight: 6,
+                  backgroundColor: color.withValues(alpha: 0.10),
+                  color: color,
+                ),
+              ),
+
+              const SizedBox(height: 7),
+
               Row(
                 children: [
                   Text(
-                    '${(ratio * 100).round()}% used',
+                    status,
                     style: theme.textTheme.labelMedium?.copyWith(
                       color: color,
                       fontWeight: FontWeight.w700,
@@ -716,15 +733,20 @@ class _BudgetCard extends StatelessWidget {
 
                   const Spacer(),
 
-                  Text(
-                    isOver
-                        ? '${MoneyFormatter.format(difference.abs())} over budget'
-                        : '${MoneyFormatter.format(difference)} remaining',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: isOver
-                          ? AppColors.expense
-                          : colors.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
+                  Expanded(
+                    child: Text(
+                      isOver
+                          ? '${MoneyFormatter.format(difference.abs())} over budget'
+                          : '${MoneyFormatter.format(difference)} remaining',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.end,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: isOver
+                            ? AppColors.expense
+                            : colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ),
                 ],
@@ -733,47 +755,6 @@ class _BudgetCard extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _BudgetAmount extends StatelessWidget {
-  const _BudgetAmount({
-    required this.label,
-    required this.value,
-    this.valueColor,
-    this.alignment = CrossAxisAlignment.start,
-  });
-
-  final String label;
-  final String value;
-  final Color? valueColor;
-  final CrossAxisAlignment alignment;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: alignment,
-      children: [
-        Text(
-          label,
-          style: theme.textTheme.labelSmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 0.6,
-          ),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          value,
-          style: theme.textTheme.titleMedium?.copyWith(
-            color: valueColor,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1116,14 +1097,14 @@ class _EmptyRelatedTransactions extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           Text(
-            'No related transactions',
+            'No spending counted this period',
             style: theme.textTheme.titleSmall?.copyWith(
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            'Confirmed expenses in this category will appear here.',
+            'Confirmed category expenses within the active budget period will appear here.',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodySmall?.copyWith(
               color: colors.onSurfaceVariant,
@@ -1275,14 +1256,8 @@ BoxDecoration _box(BuildContext context) {
   );
 }
 
-int _spent(Budget budget, List<Transaction> transactions) => transactions
-    .where(
-      (transaction) =>
-          transaction.status == ReviewStatus.confirmed &&
-          transaction.type == TransactionType.expense &&
-          transaction.category == budget.category,
-    )
-    .fold<int>(0, (sum, transaction) => sum + transaction.amountMinor);
+int _spent(Budget budget, List<Transaction> transactions) =>
+    BudgetSpendingCalculator.spent(budget, transactions);
 
 Color _progressColor(double ratio, double threshold) => ratio >= 1
     ? AppColors.expense

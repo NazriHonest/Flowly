@@ -9,7 +9,6 @@ import 'package:flowly/features/sms_detection/domain/entities/sms_transfer_obser
 import 'package:flowly/features/sms_detection/domain/entities/transaction_candidate.dart';
 import 'package:flowly/features/sms_detection/parsers/provider_sms_parser.dart';
 import 'package:flowly/features/transactions/domain/entities/transaction.dart';
-import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 void main() {

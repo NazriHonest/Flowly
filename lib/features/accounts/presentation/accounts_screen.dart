@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/formatters/money_formatter.dart';
+import '../../../core/layout/app_layout.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../../core/theme/app_colors.dart';
 import '../domain/entities/account.dart';
@@ -42,7 +43,12 @@ class AccountsScreen extends ConsumerWidget {
           },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 90),
+            padding: const EdgeInsets.fromLTRB(
+              16,
+              12,
+              16,
+              AppLayout.floatingActionGap,
+            ),
             children: [
               if (items.isEmpty)
                 SizedBox(

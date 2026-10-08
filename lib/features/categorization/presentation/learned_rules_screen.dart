@@ -27,7 +27,7 @@ class LearnedRulesScreen extends ConsumerWidget {
             ? AppEmptyState(
                 icon: Icons.auto_awesome_outlined,
                 title: 'No learned rules yet',
-                message: 'Flowly can learn a category when you correct an imported transaction.',
+                message: 'SpenFlo can learn a category when you correct an imported transaction.',
                 actionLabel: 'Add a rule',
                 onAction: () => _edit(context, ref),
               )
@@ -53,7 +53,7 @@ class LearnedRulesScreen extends ConsumerWidget {
                           ),
                           title: Text(rule.merchant),
                           subtitle: Text(rule.category),
-                          trailing: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, ref, rule)), IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.expense), onPressed: () async { if (await showFlowlyConfirmation(context, title: 'Delete learned rule?', message: 'Flowly will stop applying this automatic category.', confirmLabel: 'Delete rule')) await ref.read(merchantRuleListProvider.notifier).delete(rule.id); })]),
+                          trailing: Row(mainAxisSize: MainAxisSize.min, children: [IconButton(icon: const Icon(Icons.edit_outlined), onPressed: () => _edit(context, ref, rule)), IconButton(icon: const Icon(Icons.delete_outline, color: AppColors.expense), onPressed: () async { if (await showFlowlyConfirmation(context, title: 'Delete learned rule?', message: 'SpenFlo will stop applying this automatic category.', confirmLabel: 'Delete rule')) await ref.read(merchantRuleListProvider.notifier).delete(rule.id); })]),
                           onTap: () => _edit(context, ref, rule),
                         ),
                       ),

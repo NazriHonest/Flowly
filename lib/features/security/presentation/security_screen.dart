@@ -82,7 +82,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                       ?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 8),
-                const Text('Choose a secure numeric PIN for Flowly.'),
+                const Text('Choose a secure numeric PIN for SpenFlo.'),
                 const SizedBox(height: 22),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -209,7 +209,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                             Text(
                               enabled!
                                   ? 'Your app is protected'
-                                  : 'Protect Flowly with a PIN',
+                                  : 'Protect SpenFlo with a PIN',
                             ),
                           ],
                         ),
@@ -275,7 +275,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
                     'Your PIN is stored securely on this device',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  subtitle: Text('Flowly never stores your PIN in plain text.'),
+                  subtitle: Text('SpenFlo never stores your PIN in plain text.'),
                 ),
               ),
               if (enabled!) ...[

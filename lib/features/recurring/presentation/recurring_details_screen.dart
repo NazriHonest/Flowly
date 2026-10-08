@@ -43,8 +43,9 @@ class RecurringDetailsScreen extends ConsumerWidget {
                 title: 'Archive recurring transaction?',
                 message: 'It will no longer be generated automatically.',
                 confirmLabel: 'Archive',
-              ))
+              )) {
                 return;
+              }
               await ref.read(recurringListProvider.notifier).archive(item.id!);
               if (context.mounted) Navigator.pop(context);
             },

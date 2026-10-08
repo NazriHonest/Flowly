@@ -289,7 +289,7 @@ class _BudgetFormScreenState extends ConsumerState<BudgetFormScreen> {
 
               const _SectionHeader(
                 title: 'Spending alert',
-                subtitle: 'Choose when Flowly should consider this budget near its limit.',
+                subtitle: 'Choose when SpenFlo should consider this budget near its limit.',
               ),
 
               const SizedBox(height: 14),
@@ -471,7 +471,7 @@ class _FormHero extends StatelessWidget {
                 Text(
                   isEditing
                       ? 'Adjust the limit, schedule or alert for this budget.'
-                      : 'Set a spending limit and Flowly will help you track your progress.',
+                      : 'Set a spending limit and SpenFlo will help you track your progress.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: colors.onSurfaceVariant,
                     height: 1.4,

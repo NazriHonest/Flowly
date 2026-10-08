@@ -134,7 +134,7 @@ class _LockScreenState extends State<LockScreen> {
               Text(
                 _busy
                     ? 'Checking your PIN...'
-                    : 'Enter your PIN to unlock Flowly',
+                    : 'Enter your PIN to unlock SpenFlo',
                 textAlign: TextAlign.center,
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: colorScheme.onSurfaceVariant,
