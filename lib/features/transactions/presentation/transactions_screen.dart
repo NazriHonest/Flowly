@@ -23,11 +23,13 @@ class TransactionsScreen extends ConsumerStatefulWidget {
     this.initialAccountId,
     this.initialCategory,
     this.initialMerchant,
+    this.initialDateRange,
   });
 
   final int? initialAccountId;
   final String? initialCategory;
   final String? initialMerchant;
+  final DateTimeRange? initialDateRange;
 
   @override
   ConsumerState<TransactionsScreen> createState() => _TransactionsScreenState();
@@ -48,6 +50,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       selectedCategories: widget.initialCategory != null
           ? {widget.initialCategory!}
           : const {},
+      dateRange: widget.initialDateRange,
+      dateRangePreset: widget.initialDateRange == null ? null : 'custom',
     );
     if (widget.initialMerchant != null) {
       _searchController.text = widget.initialMerchant!;

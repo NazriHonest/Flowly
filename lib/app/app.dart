@@ -12,6 +12,8 @@ import 'router.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/security/data/security_service.dart';
 import '../features/security/presentation/lock_screen.dart';
+import '../features/accounts/presentation/balance_privacy.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 class FlowlyApp extends ConsumerStatefulWidget {
@@ -23,19 +25,14 @@ class FlowlyApp extends ConsumerStatefulWidget {
 class _FlowlyAppState extends ConsumerState<FlowlyApp>
     with WidgetsBindingObserver {
   bool? completed;
-  bool locked = false;
+  bool? locked;
   DateTime? backgroundedAt;
   final security = SecurityService();
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    SharedPreferences.getInstance().then((p) {
-      if (mounted) {
-        setState(() => completed = p.getBool('onboardingCompleted') ?? false);
-        _lockOnLaunch();
-      }
-    });
+    _initializeAccessState();
   }
 
   @override
@@ -44,12 +41,21 @@ class _FlowlyAppState extends ConsumerState<FlowlyApp>
     super.dispose();
   }
 
-  Future<void> _lockOnLaunch() async {
-    if (await security.enabled && mounted) setState(() => locked = true);
+  Future<void> _initializeAccessState() async {
+    final preferences = await SharedPreferences.getInstance();
+    final securityEnabled = await security.enabled;
+    if (!mounted) return;
+    setState(() {
+      completed = preferences.getBool('onboardingCompleted') ?? false;
+      locked = securityEnabled;
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      ref.read(balanceVisibilityProvider.notifier).hide();
+    }
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.inactive) {
       backgroundedAt ??= DateTime.now();
@@ -105,10 +111,10 @@ class _FlowlyAppState extends ConsumerState<FlowlyApp>
           child: child ?? const SizedBox.shrink(),
         );
       },
-      home: completed == null
+      home: completed == null || locked == null
           ? const _FlowlySplash()
           : completed!
-          ? (locked
+          ? (locked!
                 ? LockScreen(onUnlocked: () => setState(() => locked = false))
                 : const AppRouter())
           : OnboardingScreen(
@@ -124,9 +130,7 @@ class _FlowlySplash extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
-    final background = dark
-        ? const Color(0xFF011711)
-        : const Color(0xFFFDFFFE);
+    final background = dark ? const Color(0xFF011711) : const Color(0xFFFDFFFE);
     final asset = dark
         ? 'assets/logo_images/Splash logo dark.png'
         : 'assets/logo_images/splash logo light.png';

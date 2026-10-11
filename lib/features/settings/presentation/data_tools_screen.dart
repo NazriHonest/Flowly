@@ -12,6 +12,7 @@ import '../../accounts/providers/account_provider.dart';
 import '../../categories/providers/category_provider.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../security/data/security_service.dart';
 
 class DataToolsScreen extends ConsumerStatefulWidget {
   const DataToolsScreen({super.key});
@@ -135,6 +136,7 @@ class _DataToolsScreenState extends ConsumerState<DataToolsScreen> {
                           confirmLabel: 'Restore',
                         );
                         if (!confirmed || !mounted) return;
+                        if (!await _reauthenticateIfProtected()) return;
                         setState(() => busy = true);
                         try {
                           await backup.restore(File(path));
@@ -162,6 +164,47 @@ class _DataToolsScreenState extends ConsumerState<DataToolsScreen> {
         ],
       ),
     );
+  }
+
+  Future<bool> _reauthenticateIfProtected() async {
+    final security = SecurityService();
+    if (!await security.enabled) return true;
+    if (!mounted) return false;
+
+    final controller = TextEditingController();
+    final pin = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Confirm your PIN'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          obscureText: true,
+          keyboardType: TextInputType.number,
+          maxLength: 12,
+          decoration: const InputDecoration(labelText: 'PIN', counterText: ''),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (pin == null) return false;
+    final valid = await security.verifyPin(pin);
+    if (!valid && mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('PIN verification failed.')));
+    }
+    return valid;
   }
 
   String _filterSummary() {

@@ -12,26 +12,30 @@ class RecurringGenerator {
   Future<int> generateDue(DateTime now) async {
     var generated = 0;
     for (final item in await _database.recurringTransactions()) {
-      if (!scheduler.isDue(item, now) ||
-          item.endDate?.isBefore(item.nextOccurrence) == true) {
-        continue;
-      }
-      if (await _database.generateRecurringOccurrence(
-        item,
-        item.nextOccurrence,
-        scheduler.nextAfter(item),
-      )) {
-        generated++;
-        await _database.createNotification(
-          'Recurring transaction generated',
-          '${item.title} was added to your transactions.',
-        );
-        await LocalNotificationService.instance.show(
-          event: 'recurring',
-          id: item.id! ^ item.nextOccurrence.millisecondsSinceEpoch,
-          title: 'Recurring transaction generated',
-          body: '${item.title} was added to your transactions.',
-        );
+      var occurrence = item.nextOccurrence;
+      var guard = 0;
+      while (item.enabled && !occurrence.isAfter(now) && guard++ < 10000) {
+        if (item.endDate?.isBefore(occurrence) == true) break;
+        final next = scheduler.nextAfter(item, occurrence: occurrence);
+        if (await _database.generateRecurringOccurrence(
+          item,
+          occurrence,
+          next,
+        )) {
+          generated++;
+          await _database.createNotification(
+            'Recurring transaction generated',
+            '${item.title} was added to your transactions.',
+          );
+          await LocalNotificationService.instance.show(
+            event: 'recurring',
+            id: item.id! ^ occurrence.millisecondsSinceEpoch,
+            title: 'Recurring transaction generated',
+            body: '${item.title} was added to your transactions.',
+          );
+        }
+        if (!next.isAfter(occurrence)) break;
+        occurrence = next;
       }
     }
     return generated;

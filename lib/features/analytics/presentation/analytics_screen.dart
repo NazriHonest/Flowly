@@ -1,7 +1,9 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fl_chart/fl_chart.dart';
+
 import '../../../core/formatters/money_formatter.dart';
 import '../../../core/layout/app_layout.dart';
 import '../../../core/theme/app_colors.dart';
@@ -80,15 +82,11 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             filtered.where((item) => item.type == TransactionType.expense),
             (item) => item.category,
           );
-          final merchant = _group(
-            filtered.where((item) => item.type == TransactionType.expense),
-            (item) => item.title,
-          );
-          final largestExpenses =
-              filtered
-                  .where((item) => item.type == TransactionType.expense)
-                  .toList()
-                ..sort((a, b) => b.amountMinor.compareTo(a.amountMinor));
+          final expenseItems = filtered
+              .where((item) => item.type == TransactionType.expense)
+              .toList();
+          final largestExpenses = expenseItems.toList()
+            ..sort((a, b) => b.amountMinor.compareTo(a.amountMinor));
 
           final accounts = ref.watch(accountListProvider).value ?? [];
           final accountDistribution = _group(
@@ -124,14 +122,6 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
             current: expenses,
 
             previous: previousExpenses,
-          );
-
-          final dailySpending = _dailyExpenseSeries(
-            transactions: filtered,
-
-            start: start,
-
-            end: end,
           );
 
           final incomeExpenseTrend = _incomeExpenseSeries(
@@ -237,27 +227,9 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                 const SizedBox(height: 24),
 
                 _SectionHeader(
-                  title: 'Spending trend',
-
-                  subtitle: 'Your expense activity over time',
-                ),
-
-                const SizedBox(height: 10),
-
-                _SpendingTrendCard(
-                  values: dailySpending,
-
-                  total: expenses,
-
-                  days: days,
-                ),
-
-                const SizedBox(height: 24),
-
-                _SectionHeader(
                   title: 'Spending by category',
 
-                  subtitle: 'Tap a category to view its transactions',
+                  subtitle: 'Expense distribution · tap a slice or category',
                 ),
 
                 const SizedBox(height: 10),
@@ -319,37 +291,6 @@ class _AnalyticsScreenState extends ConsumerState<AnalyticsScreen> {
                       }
                     },
                   ),
-
-                const SizedBox(height: 24),
-
-                _SectionHeader(
-                  title: 'Top merchants',
-
-                  subtitle: 'Your highest spending destinations',
-                ),
-
-                const SizedBox(height: 10),
-
-                if (merchant.isEmpty)
-                  const _InlineEmpty(
-                    icon: Icons.storefront_outlined,
-
-                    message: 'No merchant spending in this period.',
-                  )
-                else
-                  _MerchantList(
-                    values: merchant,
-
-                    total: expenses,
-
-                    onTap: (key) => _drillDown(
-                      context,
-
-                      TransactionsScreen(initialMerchant: key),
-                    ),
-                  ),
-
-                const SizedBox(height: 24),
 
                 _SectionHeader(
                   title: 'Largest expenses',
@@ -528,38 +469,6 @@ double? _percentageChange({required int current, required int previous}) {
   return ((current - previous) / previous) * 100;
 }
 
-List<int> _dailyExpenseSeries({
-  required List<Transaction> transactions,
-
-  required DateTime start,
-
-  required DateTime end,
-}) {
-  final days = end.difference(start).inDays + 1;
-
-  final bucketCount = math.min(days, 14);
-
-  final bucketSize = math.max(1, (days / bucketCount).ceil());
-
-  final values = List<int>.filled(bucketCount, 0);
-
-  for (final item in transactions) {
-    if (item.type != TransactionType.expense) continue;
-
-    final day = DateTime(item.date.year, item.date.month, item.date.day);
-
-    final offset = day.difference(start).inDays;
-
-    if (offset < 0) continue;
-
-    final index = math.min(bucketCount - 1, offset ~/ bucketSize);
-
-    values[index] += item.amountMinor;
-  }
-
-  return values;
-}
-
 _IncomeExpenseSeries _incomeExpenseSeries({
   required List<Transaction> transactions,
 
@@ -679,12 +588,12 @@ class _RangePill extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Material(
-      color: selected ? AppColors.primary : colorScheme.surface,
+      color: selected ? colorScheme.primary : colorScheme.surface,
 
       shape: StadiumBorder(
         side: BorderSide(
           color: selected
-              ? AppColors.primary
+              ? colorScheme.primary
               : colorScheme.outlineVariant.withValues(alpha: .75),
         ),
       ),
@@ -701,7 +610,7 @@ class _RangePill extends StatelessWidget {
             label,
 
             style: TextStyle(
-              color: selected ? AppColors.onPrimary : colorScheme.onSurface,
+              color: selected ? colorScheme.onPrimary : colorScheme.onSurface,
 
               fontSize: 12,
 
@@ -776,11 +685,11 @@ class _OverviewCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Text(
+              Text(
                 'Financial overview',
 
                 style: TextStyle(
-                  color: AppColors.onPrimary,
+                  color: Theme.of(context).colorScheme.onPrimary,
 
                   fontSize: 16,
 
@@ -798,7 +707,8 @@ class _OverviewCard extends StatelessWidget {
                 ),
 
                 decoration: BoxDecoration(
-                  color: AppColors.onPrimary.withValues(alpha: .11),
+                  color: Theme.of(context).colorScheme.onPrimary
+                      .withValues(alpha: .11),
 
                   borderRadius: BorderRadius.circular(999),
                 ),
@@ -806,8 +716,9 @@ class _OverviewCard extends StatelessWidget {
                 child: Text(
                   rangeLabel,
 
-                  style: const TextStyle(
-                    color: AppColors.heroTextMuted,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimary
+                        .withValues(alpha: .80),
 
                     fontSize: 10,
 
@@ -824,7 +735,8 @@ class _OverviewCard extends StatelessWidget {
             'Net cash flow',
 
             style: TextStyle(
-              color: AppColors.heroTextMuted,
+              color: Theme.of(context).colorScheme.onPrimary
+                  .withValues(alpha: .80),
 
               fontSize: 12,
 
@@ -837,8 +749,8 @@ class _OverviewCard extends StatelessWidget {
           Text(
             MoneyFormatter.signed(netCashFlow.abs(), negative: !positiveNet),
 
-            style: const TextStyle(
-              color: AppColors.onPrimary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimary,
 
               fontSize: 30,
 
@@ -862,7 +774,7 @@ class _OverviewCard extends StatelessWidget {
 
                   value: MoneyFormatter.format(income),
 
-                  color: AppColors.heroIncome,
+                  color: Theme.of(context).colorScheme.onPrimary,
                 ),
               ),
 
@@ -876,7 +788,7 @@ class _OverviewCard extends StatelessWidget {
 
                   value: MoneyFormatter.format(expenses),
 
-                  color: AppColors.heroExpense,
+                  color: Theme.of(context).colorScheme.onPrimary,
                 ),
               ),
 
@@ -926,7 +838,7 @@ class _OverviewMetric extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
 
       decoration: BoxDecoration(
-        color: AppColors.onPrimary.withValues(alpha: .09),
+        color: Theme.of(context).colorScheme.onPrimary.withValues(alpha: .09),
 
         borderRadius: BorderRadius.circular(14),
       ),
@@ -946,7 +858,11 @@ class _OverviewMetric extends StatelessWidget {
 
             overflow: TextOverflow.ellipsis,
 
-            style: TextStyle(color: AppColors.heroTextMuted, fontSize: 10),
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimary
+                  .withValues(alpha: .80),
+              fontSize: 10,
+            ),
           ),
 
           const SizedBox(height: 2),
@@ -958,8 +874,8 @@ class _OverviewMetric extends StatelessWidget {
 
             overflow: TextOverflow.ellipsis,
 
-            style: const TextStyle(
-              color: AppColors.onPrimary,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.onPrimary,
 
               fontSize: 12,
 
@@ -1257,277 +1173,190 @@ class _LegendDot extends StatelessWidget {
   }
 }
 
-class _SpendingTrendCard extends StatelessWidget {
-  const _SpendingTrendCard({
-    required this.values,
-    required this.total,
-    required this.days,
-  });
-
-  final List<int> values;
-  final int total;
-  final int days;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final average = days <= 0 ? 0 : total ~/ days;
-    final maxMinor = values.fold<int>(
-      0,
-      (current, value) => math.max(current, value),
-    );
-    final maxY = maxMinor <= 0 ? 1.0 : maxMinor.toDouble() * 1.15;
-    final maxX = math.max(1, values.length - 1).toDouble();
-    final spots = List.generate(
-      values.length,
-      (index) => FlSpot(index.toDouble(), values[index].toDouble()),
-    );
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
-      decoration: _panelDecoration(context),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _SmallMetric(
-                  label: 'Total spent',
-                  value: MoneyFormatter.format(total),
-                ),
-              ),
-              Expanded(
-                child: _SmallMetric(
-                  label: 'Daily average',
-                  value: MoneyFormatter.format(average),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          SizedBox(
-            height: 170,
-            child: LineChart(
-              LineChartData(
-                minX: 0,
-                maxX: maxX,
-                minY: 0,
-                maxY: maxY,
-                clipData: const FlClipData.all(),
-                borderData: FlBorderData(show: false),
-                gridData: FlGridData(
-                  show: true,
-                  drawVerticalLine: false,
-                  horizontalInterval: maxY / 4,
-                  getDrawingHorizontalLine: (_) => FlLine(
-                    color: colorScheme.outlineVariant.withValues(alpha: .55),
-                    strokeWidth: 1,
-                  ),
-                ),
-                titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  rightTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  leftTitles: const AxisTitles(
-                    sideTitles: SideTitles(showTitles: false),
-                  ),
-                  bottomTitles: AxisTitles(
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 24,
-                      interval: 1,
-                      getTitlesWidget: (value, meta) {
-                        if (values.length <= 1) return const SizedBox.shrink();
-                        final index = value.round();
-                        if (index < 0 || index >= values.length) {
-                          return const SizedBox.shrink();
-                        }
-                        final label = _chartPointLabel(index, values.length);
-                        if (label.isEmpty) return const SizedBox.shrink();
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 7),
-                          child: Text(
-                            label,
-                            style: TextStyle(
-                              color: colorScheme.onSurfaceVariant,
-                              fontSize: 9,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                lineTouchData: LineTouchData(
-                  enabled: true,
-                  touchTooltipData: LineTouchTooltipData(
-                    getTooltipColor: (_) => colorScheme.inverseSurface,
-                    getTooltipItems: (spots) => spots
-                        .map(
-                          (spot) => LineTooltipItem(
-                            MoneyFormatter.format(spot.y.round()),
-                            TextStyle(
-                              color: colorScheme.onInverseSurface,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                            ),
-                            children: const [
-                              TextSpan(
-                                text: '  ● Balance',
-                                style: TextStyle(color: AppColors.secondary),
-                              ),
-                            ],
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: true,
-                    curveSmoothness: .3,
-                    color: AppColors.secondary,
-                    barWidth: 3,
-                    isStrokeCapRound: true,
-                    dotData: const FlDotData(show: false),
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          AppColors.secondary.withValues(alpha: .20),
-                          AppColors.secondary.withValues(alpha: .01),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOutCubic,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _SmallMetric extends StatelessWidget {
-  const _SmallMetric({required this.label, required this.value});
-
-  final String label;
-
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-
-      children: [
-        Text(
-          label,
-
-          style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 10),
-        ),
-
-        const SizedBox(height: 2),
-
-        Text(
-          value,
-
-          maxLines: 1,
-
-          overflow: TextOverflow.ellipsis,
-
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-        ),
-      ],
-    );
-  }
-}
-
 class _CategoryBreakdown extends StatelessWidget {
   const _CategoryBreakdown({
     required this.values,
-
     required this.total,
-
     required this.onTap,
   });
 
   final Map<String, int> values;
-
   final int total;
-
   final ValueChanged<String> onTap;
+
+  // Matches the reference image: blue, red, orange, purple, green.
+  static const _segmentColors = <Color>[
+    Color(0xFF4C74F5),
+    Color(0xFFFF5964),
+    Color(0xFFFF821C),
+    Color(0xFFAD48F5),
+    Color(0xFF18C49A),
+    Color(0xFFF2B84B),
+    Color(0xFF20A4E8),
+    Color(0xFFEA6FA8),
+  ];
 
   @override
   Widget build(BuildContext context) {
-    final entries = values.entries.toList()
+    final scheme = Theme.of(context).colorScheme;
+    final entries = values.entries.where((e) => e.value > 0).toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    final displayEntries = _donutEntries(entries);
+    if (entries.isEmpty || total <= 0) {
+      return const _InlineEmpty(
+        icon: Icons.donut_large_outlined,
+        message: 'No category spending for this period.',
+      );
+    }
+
+    Widget donut(double size) {
+      final thickness = size * .175;
+      final centerRadius = (size / 2) - thickness;
+      return SizedBox(
+        width: size,
+        height: size,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            PieChart(
+              PieChartData(
+                startDegreeOffset: -90,
+                sectionsSpace: 0,
+                centerSpaceRadius: centerRadius,
+                pieTouchData: PieTouchData(
+                  enabled: true,
+                  touchCallback: (event, response) {
+                    if (event is! FlTapUpEvent) return;
+                    final index = response?.touchedSection?.touchedSectionIndex;
+                    if (index != null && index >= 0 && index < entries.length) {
+                      onTap(entries[index].key);
+                    }
+                  },
+                ),
+                sections: [
+                  for (var i = 0; i < entries.length; i++)
+                    PieChartSectionData(
+                      color: _segmentColors[i % _segmentColors.length],
+                      value: entries[i].value.toDouble(),
+                      radius: thickness,
+                      showTitle: entries[i].value / total >= .055,
+                      title: '${(entries[i].value / total * 100).round()}%',
+                      titlePositionPercentageOffset: .52,
+                      titleStyle: TextStyle(
+                        color: Colors.white,
+                        fontSize: size < 160 ? 9 : 10,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                ],
+              ),
+              duration: const Duration(milliseconds: 300),
+            ),
+            IgnorePointer(
+              child: SizedBox(
+                width: size * .60,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'Total',
+                      style: TextStyle(
+                        color: scheme.onSurfaceVariant,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        MoneyFormatter.format(total),
+                        maxLines: 1,
+                        style: TextStyle(
+                          color: scheme.onSurface,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    Widget legend() => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        for (var i = 0; i < entries.length; i++)
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => onTap(entries[i].key),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _segmentColors[i % _segmentColors.length],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        entries[i].key,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: scheme.onSurfaceVariant,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
 
     return Container(
-      padding: const EdgeInsets.all(16),
-
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 18),
       decoration: _panelDecoration(context),
-
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final stacked = constraints.maxWidth < 360;
-
-          final donut = _CategoryDonutChart(
-            entries: displayEntries,
-            total: total,
-          );
-
-          final rows = Column(
-            children: displayEntries.asMap().entries.map((pair) {
-              final entry = pair.value;
-
-              final percent = total == 0 ? 0.0 : entry.value / total;
-
-              final color = _chartColors[pair.key % _chartColors.length];
-
-              return _BreakdownRow(
-                label: entry.key,
-
-                value: entry.value,
-
-                percent: percent,
-
-                color: color,
-
-                onTap: entry.key == 'Other' ? () {} : () => onTap(entry.key),
-              );
-            }).toList(),
-          );
-
-          if (stacked) {
-            return Column(children: [donut, const SizedBox(height: 18), rows]);
+          // A normal phone has ~280-330 logical pixels of available card
+          // width. Keep the donut and legend SIDE BY SIDE at those widths.
+          // Stack only on genuinely narrow layouts.
+          final width = constraints.maxWidth;
+          if (width < 245) {
+            return Column(
+              children: [
+                donut(math.min(190, width)),
+                const SizedBox(height: 12),
+                legend(),
+              ],
+            );
           }
 
+          final donutSize = math.min(190.0, math.max(138.0, width * .51));
           return Row(
             crossAxisAlignment: CrossAxisAlignment.center,
-
             children: [
-              donut,
-
-              const SizedBox(width: 18),
-
-              Expanded(child: rows),
+              donut(donutSize),
+              const SizedBox(width: 14),
+              Expanded(child: legend()),
             ],
           );
         },
@@ -1591,103 +1420,6 @@ class _BreakdownList extends StatelessWidget {
             onTap: () => onTap(entry.key),
           );
         }).toList(),
-      ),
-    );
-  }
-}
-
-class _BreakdownRow extends StatelessWidget {
-  const _BreakdownRow({
-    required this.label,
-
-    required this.value,
-
-    required this.percent,
-
-    required this.color,
-
-    required this.onTap,
-  });
-
-  final String label;
-
-  final int value;
-
-  final double percent;
-
-  final Color color;
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-
-      onTap: onTap,
-
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 7),
-
-        child: Row(
-          children: [
-            Container(
-              width: 9,
-
-              height: 9,
-
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-            ),
-
-            const SizedBox(width: 8),
-
-            Expanded(
-              child: Text(
-                label,
-
-                maxLines: 1,
-
-                overflow: TextOverflow.ellipsis,
-
-                style: const TextStyle(
-                  fontSize: 11,
-
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-
-            const SizedBox(width: 8),
-
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-
-              children: [
-                Text(
-                  MoneyFormatter.format(value),
-
-                  style: const TextStyle(
-                    fontSize: 11,
-
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-
-                Text(
-                  '${(percent * 100).round()}%',
-
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-
-                    fontSize: 9,
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -1827,138 +1559,6 @@ class _BreakdownListTile extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _MerchantList extends StatelessWidget {
-  const _MerchantList({
-    required this.values,
-
-    required this.total,
-
-    required this.onTap,
-  });
-
-  final Map<String, int> values;
-
-  final int total;
-
-  final ValueChanged<String> onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    final entries = values.entries.toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-
-      decoration: _panelDecoration(context),
-
-      child: Column(
-        children: entries.take(5).toList().asMap().entries.map((pair) {
-          final entry = pair.value;
-
-          final percent = total == 0 ? 0.0 : entry.value / total;
-
-          return InkWell(
-            borderRadius: BorderRadius.circular(12),
-
-            onTap: () => onTap(entry.key),
-
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 11),
-
-              child: Row(
-                children: [
-                  Container(
-                    width: 40,
-
-                    height: 40,
-
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: .10),
-
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-
-                    child: const Icon(
-                      Icons.storefront_rounded,
-
-                      color: AppColors.primary,
-
-                      size: 19,
-                    ),
-                  ),
-
-                  const SizedBox(width: 12),
-
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Text(
-                          entry.key,
-
-                          maxLines: 1,
-
-                          overflow: TextOverflow.ellipsis,
-
-                          style: const TextStyle(
-                            fontSize: 13,
-
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-
-                        const SizedBox(height: 3),
-
-                        Text(
-                          '${(percent * 100).round()}% of spending',
-
-                          style: TextStyle(
-                            color: colorScheme.onSurfaceVariant,
-
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(width: 10),
-
-                  Text(
-                    MoneyFormatter.signed(entry.value, negative: true),
-
-                    style: const TextStyle(
-                      color: AppColors.expense,
-
-                      fontSize: 12,
-
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-
-                  const SizedBox(width: 2),
-
-                  Icon(
-                    Icons.chevron_right_rounded,
-
-                    color: colorScheme.onSurfaceVariant,
-
-                    size: 18,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
       ),
     );
   }
@@ -2337,107 +1937,10 @@ class _IncomeExpenseSeries {
   final List<int> expenses;
 }
 
-class _CategoryDonutChart extends StatelessWidget {
-  const _CategoryDonutChart({required this.entries, required this.total});
-
-  final List<MapEntry<String, int>> entries;
-  final int total;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return SizedBox(
-      width: 160,
-      height: 160,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          PieChart(
-            PieChartData(
-              startDegreeOffset: -90,
-              centerSpaceRadius: 46,
-              sectionsSpace: 2,
-              borderData: FlBorderData(show: false),
-              pieTouchData: PieTouchData(enabled: true),
-              sections: entries.asMap().entries.map((pair) {
-                final index = pair.key;
-                final entry = pair.value;
-                final percentage = total <= 0 ? 0.0 : entry.value / total * 100;
-                final segmentColor = _chartColors[index % _chartColors.length];
-
-                return PieChartSectionData(
-                  value: entry.value.toDouble(),
-                  color: segmentColor,
-                  radius: 27,
-                  showTitle: percentage >= 5,
-                  title: '${percentage.round()}%',
-                  titleStyle: TextStyle(
-                    color: AppColors.foregroundOn(segmentColor),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                  ),
-                  titlePositionPercentageOffset: .57,
-                  borderSide: BorderSide.none,
-                );
-              }).toList(),
-            ),
-            duration: const Duration(milliseconds: 350),
-            curve: Curves.easeOutCubic,
-          ),
-          IgnorePointer(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'Total',
-                  style: TextStyle(
-                    color: colorScheme.onSurfaceVariant,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 86),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      MoneyFormatter.format(total),
-                      maxLines: 1,
-                      style: TextStyle(
-                        color: colorScheme.onSurface,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-List<MapEntry<String, int>> _donutEntries(List<MapEntry<String, int>> entries) {
-  if (entries.length <= _chartColors.length) return entries;
-
-  final visibleCount = _chartColors.length - 1;
-  final result = entries.take(visibleCount).toList();
-  final otherTotal = entries
-      .skip(visibleCount)
-      .fold<int>(0, (sum, entry) => sum + entry.value);
-  result.add(MapEntry('Other', otherTotal));
-  return result;
-}
-
 String _chartPointLabel(int index, int count) {
   if (count <= 1) return '';
   if (index == 0) return 'Start';
-  if (index == count - 1) return 'Now';
+  if (index == count - 1) return 'End';
   if (index == (count - 1) ~/ 2) return 'Mid';
   return '';
 }

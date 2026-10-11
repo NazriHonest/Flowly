@@ -5,7 +5,7 @@ class EvcPlusParser extends ProviderSmsParser {
   EvcPlusParser() : super(providerName: 'EVC Plus', marker: '[-EVCPLUS-]');
 
   static final _uWareejisay = RegExp(
-    r'ayaad\s+u\s*wareejisay\s+(.+?)\s*\(\s*(\+?\d+)\s*\)',
+    r'ayaad\s+u\s*wareejisay\s+(.+?)(?:\s*\(\s*(\+?\d+)\s*\))?\s*,',
     caseSensitive: false,
   );
   static final _uDirtay = RegExp(

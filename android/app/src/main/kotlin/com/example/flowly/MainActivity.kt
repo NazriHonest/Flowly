@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.provider.Telephony
 import android.net.Uri
+import android.os.Bundle
+import android.view.WindowManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
@@ -15,6 +17,11 @@ class MainActivity : FlutterActivity() {
     private val channelName = "com.flowly/sms_permissions"
     private val requestCode = 4801
     private var pendingResult: MethodChannel.Result? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)

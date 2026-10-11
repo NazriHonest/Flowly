@@ -6,6 +6,8 @@ import 'dart:developer' as developer;
 
 import '../../features/accounts/domain/entities/account.dart';
 import '../../features/budgets/domain/entities/budget.dart';
+import '../../features/budgets/domain/entities/budget_history.dart';
+import '../../features/budgets/domain/services/budget_period_calculator.dart';
 import '../../features/categories/domain/entities/category.dart';
 import '../../features/categorization/domain/services/categorization_service.dart';
 import '../../features/goals/domain/entities/goal.dart';
@@ -45,7 +47,7 @@ class AppDatabase {
 
   Future<Database> get db async => _database ??= await openDatabase(
     await databasePath,
-    version: 17,
+    version: 18,
     onConfigure: (database) => database.execute('PRAGMA foreign_keys = ON'),
     onCreate: (database, _) => _migrations.create(database),
     onUpgrade: (database, oldVersion, _) =>
@@ -58,7 +60,7 @@ class AppDatabase {
         orderBy: 'transaction_date DESC, created_at DESC, id DESC',
       )
       .then((rows) => rows.map(_transaction).toList());
-      
+
   Future<List<Account>> accounts() async => (await db)
       .query('accounts', where: 'is_archived=0')
       .then(
@@ -164,12 +166,29 @@ class AppDatabase {
   );
 
   Future<void> saveTransaction(Transaction t) async {
+    if (t.amountMinor <= 0) {
+      throw ArgumentError('Transaction amount must be greater than zero.');
+    }
     if (t.isTransfer &&
         (t.destinationAccountId == null ||
             t.destinationAccountId == t.accountId)) {
       throw ArgumentError('A transfer requires two different accounts.');
     }
     final database = await db;
+    if (t.isTransfer) {
+      final accounts = await database.query(
+        'accounts',
+        columns: const ['id', 'currency'],
+        where: 'id IN (?, ?)',
+        whereArgs: [t.accountId, t.destinationAccountId],
+      );
+      if (accounts.length != 2 ||
+          accounts[0]['currency'] != accounts[1]['currency']) {
+        throw ArgumentError(
+          'Transfers require two existing accounts with the same currency.',
+        );
+      }
+    }
     final existingCreatedAt = t.id == null
         ? null
         : (await database.query(
@@ -250,38 +269,38 @@ class AppDatabase {
     late final bool saved;
     try {
       saved = await database.transaction((txn) async {
-      final count =
-          Sqflite.firstIntValue(
-            await txn.rawQuery(
-              'SELECT COUNT(*) FROM transaction_fingerprints WHERE fingerprint=?',
-              [fingerprint],
-            ),
-          ) ??
-          0;
-      if (count > 0) return false;
-      final id = await txn.insert('transactions', {
-        'amount': t.amountMinor,
-        'type': t.type.name,
-        'title': t.title,
-        'category': t.category,
-        'account_id': t.accountId,
-        'destination_account_id': t.destinationAccountId,
-        'transaction_date': t.date.toIso8601String(),
-        'source': t.source.name,
-        'status': t.status.name,
-        'notes': t.notes,
-        'provider_transaction_at': t.providerTransactionAt
-            ?.toUtc()
-            .toIso8601String(),
-        'sms_received_at': t.smsReceivedAt?.toUtc().toIso8601String(),
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      });
-      await txn.insert('transaction_fingerprints', {
-        'fingerprint': fingerprint,
-        'transaction_id': id,
-        'created_at': DateTime.now().toUtc().toIso8601String(),
-      });
-      return true;
+        final count =
+            Sqflite.firstIntValue(
+              await txn.rawQuery(
+                'SELECT COUNT(*) FROM transaction_fingerprints WHERE fingerprint=?',
+                [fingerprint],
+              ),
+            ) ??
+            0;
+        if (count > 0) return false;
+        final id = await txn.insert('transactions', {
+          'amount': t.amountMinor,
+          'type': t.type.name,
+          'title': t.title,
+          'category': t.category,
+          'account_id': t.accountId,
+          'destination_account_id': t.destinationAccountId,
+          'transaction_date': t.date.toIso8601String(),
+          'source': t.source.name,
+          'status': t.status.name,
+          'notes': t.notes,
+          'provider_transaction_at': t.providerTransactionAt
+              ?.toUtc()
+              .toIso8601String(),
+          'sms_received_at': t.smsReceivedAt?.toUtc().toIso8601String(),
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+        await txn.insert('transaction_fingerprints', {
+          'fingerprint': fingerprint,
+          'transaction_id': id,
+          'created_at': DateTime.now().toUtc().toIso8601String(),
+        });
+        return true;
       });
     } on DatabaseException catch (error) {
       if (error.isUniqueConstraintError()) return false;
@@ -432,261 +451,264 @@ class AppDatabase {
     final database = await db;
     try {
       return await database.transaction((txn) async {
-      final duplicateObservation =
-          Sqflite.firstIntValue(
-            await txn.rawQuery(
-              'SELECT COUNT(*) FROM sms_transfer_observations WHERE fingerprint=?',
-              [fingerprint],
-            ),
-          ) ??
-          0;
-      final duplicateTransaction =
-          Sqflite.firstIntValue(
-            await txn.rawQuery(
-              'SELECT COUNT(*) FROM transaction_fingerprints WHERE fingerprint=?',
-              [fingerprint],
-            ),
-          ) ??
-          0;
-      if (duplicateObservation > 0 || duplicateTransaction > 0) {
-        return SmsTransferSaveOutcome.duplicate;
-      }
+        final duplicateObservation =
+            Sqflite.firstIntValue(
+              await txn.rawQuery(
+                'SELECT COUNT(*) FROM sms_transfer_observations WHERE fingerprint=?',
+                [fingerprint],
+              ),
+            ) ??
+            0;
+        final duplicateTransaction =
+            Sqflite.firstIntValue(
+              await txn.rawQuery(
+                'SELECT COUNT(*) FROM transaction_fingerprints WHERE fingerprint=?',
+                [fingerprint],
+              ),
+            ) ??
+            0;
+        if (duplicateObservation > 0 || duplicateTransaction > 0) {
+          return SmsTransferSaveOutcome.duplicate;
+        }
 
-      final now = DateTime.now().toUtc().toIso8601String();
-      Map<String, Object?> observationValues({
-        int? transactionId,
-        String status = 'pending',
-      }) => {
-        'transaction_id': transactionId,
-        'provider_id': providerId,
-        'mapped_account_id': mappedAccountId,
-        'linked_account_id': linkedAccountId,
-        'direction': direction.name,
-        'amount': candidate.amountMinor,
-        'currency': candidate.currency.toUpperCase(),
-        'account_hint_hash': candidate.accountHintHash,
-        'provider_transaction_at': candidate.providerTransactionAt
-            ?.toUtc()
-            .toIso8601String(),
-        'sms_received_at': smsReceivedAt.toUtc().toIso8601String(),
-        'source': source.name,
-        'fingerprint': fingerprint,
-        'status': status,
-        'created_at': now,
-      };
-
-      Future<void> attachTo(int transactionId) async {
-        await txn.insert(
-          'sms_transfer_observations',
-          observationValues(transactionId: transactionId, status: 'attached'),
-        );
-        await txn.insert('transaction_fingerprints', {
-          'fingerprint': fingerprint,
+        final now = DateTime.now().toUtc().toIso8601String();
+        Map<String, Object?> observationValues({
+          int? transactionId,
+          String status = 'pending',
+        }) => {
           'transaction_id': transactionId,
+          'provider_id': providerId,
+          'mapped_account_id': mappedAccountId,
+          'linked_account_id': linkedAccountId,
+          'direction': direction.name,
+          'amount': candidate.amountMinor,
+          'currency': candidate.currency.toUpperCase(),
+          'account_hint_hash': candidate.accountHintHash,
+          'provider_transaction_at': candidate.providerTransactionAt
+              ?.toUtc()
+              .toIso8601String(),
+          'sms_received_at': smsReceivedAt.toUtc().toIso8601String(),
+          'source': source.name,
+          'fingerprint': fingerprint,
+          'status': status,
           'created_at': now,
-        });
-      }
+        };
 
-      bool closeEnough(String raw) =>
-          smsReceivedAt.toUtc().difference(DateTime.parse(raw).toUtc()).abs() <=
-          const Duration(hours: 2);
-      bool compatibleHint(Object? raw) =>
-          candidate.accountHintHash == null ||
-          raw == null ||
-          raw == candidate.accountHintHash;
-
-      int? sourceAccountId;
-      int? destinationAccountId;
-      final opposite = direction == TransferObservationDirection.outgoing
-          ? TransferObservationDirection.incoming
-          : TransferObservationDirection.outgoing;
-      final attachedEvidence = await txn.query(
-        'sms_transfer_observations',
-        where: 'status=? AND direction=? AND amount=? AND currency=? AND mapped_account_id<>?',
-        whereArgs: [
-          SmsTransferObservationStatus.attached.name,
-          opposite.name,
-          candidate.amountMinor,
-          candidate.currency.toUpperCase(),
-          mappedAccountId,
-        ],
-      );
-      final compatibleAttached = <Map<String, Object?>>[];
-      for (final evidence in attachedEvidence) {
-        if (!closeEnough(evidence['sms_received_at'] as String) ||
-            !compatibleHint(evidence['account_hint_hash'])) {
-          continue;
+        Future<void> attachTo(int transactionId) async {
+          await txn.insert(
+            'sms_transfer_observations',
+            observationValues(transactionId: transactionId, status: 'attached'),
+          );
+          await txn.insert('transaction_fingerprints', {
+            'fingerprint': fingerprint,
+            'transaction_id': transactionId,
+            'created_at': now,
+          });
         }
-        final otherMapped = evidence['mapped_account_id'] as int;
-        final sharedHint =
-            candidate.accountHintHash != null &&
-            evidence['account_hint_hash'] == candidate.accountHintHash;
-        final configuredRelationship =
-            linkedAccountId == otherMapped ||
-            evidence['linked_account_id'] == mappedAccountId;
-        if (!sharedHint && !configuredRelationship) continue;
-        final transaction = (await txn.query(
-          'transactions',
-          where: 'id=? AND type=? AND status=?',
-          whereArgs: [
-            evidence['transaction_id'],
-            TransactionType.transfer.name,
-            ReviewStatus.confirmed.name,
-          ],
-        )).firstOrNull;
-        if (transaction == null) continue;
-        final expectedSource =
-            direction == TransferObservationDirection.outgoing
-            ? mappedAccountId
-            : otherMapped;
-        final expectedDestination =
-            direction == TransferObservationDirection.outgoing
-            ? otherMapped
-            : mappedAccountId;
-        if (transaction['account_id'] == expectedSource &&
-            transaction['destination_account_id'] == expectedDestination) {
-          compatibleAttached.add(evidence);
-        }
-      }
-      final attachedTransactionIds = compatibleAttached
-          .map((row) => row['transaction_id'] as int)
-          .toSet();
-      if (attachedTransactionIds.length == 1) {
-        await attachTo(attachedTransactionIds.single);
-        return SmsTransferSaveOutcome.attached;
-      }
 
-      if (linkedAccountId != null && linkedAccountId != mappedAccountId) {
-        sourceAccountId = direction == TransferObservationDirection.outgoing
-            ? mappedAccountId
-            : linkedAccountId;
-        destinationAccountId =
-            direction == TransferObservationDirection.outgoing
-            ? linkedAccountId
-            : mappedAccountId;
-        final existing = await txn.query(
-          'transactions',
-          where: 'type=? AND status=? AND amount=? AND account_id=? AND destination_account_id=?',
+        bool closeEnough(String raw) =>
+            smsReceivedAt
+                .toUtc()
+                .difference(DateTime.parse(raw).toUtc())
+                .abs() <=
+            const Duration(hours: 2);
+        bool compatibleHint(Object? raw) =>
+            candidate.accountHintHash == null ||
+            raw == null ||
+            raw == candidate.accountHintHash;
+
+        int? sourceAccountId;
+        int? destinationAccountId;
+        final opposite = direction == TransferObservationDirection.outgoing
+            ? TransferObservationDirection.incoming
+            : TransferObservationDirection.outgoing;
+        final attachedEvidence = await txn.query(
+          'sms_transfer_observations',
+          where: 'status=? AND direction=? AND amount=? AND currency=? AND mapped_account_id<>?',
           whereArgs: [
-            TransactionType.transfer.name,
-            ReviewStatus.confirmed.name,
+            SmsTransferObservationStatus.attached.name,
+            opposite.name,
             candidate.amountMinor,
-            sourceAccountId,
-            destinationAccountId,
+            candidate.currency.toUpperCase(),
+            mappedAccountId,
           ],
         );
-        final compatible = <Map<String, Object?>>[];
-        for (final row in existing) {
-          final observations = await txn.query(
-            'sms_transfer_observations',
-            where: 'transaction_id=?',
-            whereArgs: [row['id']],
-          );
-          final timeMatches = observations.any(
-            (item) => closeEnough(item['sms_received_at'] as String),
-          );
-          final hintMatches = observations.every(
-            (item) => compatibleHint(item['account_hint_hash']),
-          );
-          if (timeMatches && hintMatches) compatible.add(row);
+        final compatibleAttached = <Map<String, Object?>>[];
+        for (final evidence in attachedEvidence) {
+          if (!closeEnough(evidence['sms_received_at'] as String) ||
+              !compatibleHint(evidence['account_hint_hash'])) {
+            continue;
+          }
+          final otherMapped = evidence['mapped_account_id'] as int;
+          final sharedHint =
+              candidate.accountHintHash != null &&
+              evidence['account_hint_hash'] == candidate.accountHintHash;
+          final configuredRelationship =
+              linkedAccountId == otherMapped ||
+              evidence['linked_account_id'] == mappedAccountId;
+          if (!sharedHint && !configuredRelationship) continue;
+          final transaction = (await txn.query(
+            'transactions',
+            where: 'id=? AND type=? AND status=?',
+            whereArgs: [
+              evidence['transaction_id'],
+              TransactionType.transfer.name,
+              ReviewStatus.confirmed.name,
+            ],
+          )).firstOrNull;
+          if (transaction == null) continue;
+          final expectedSource =
+              direction == TransferObservationDirection.outgoing
+              ? mappedAccountId
+              : otherMapped;
+          final expectedDestination =
+              direction == TransferObservationDirection.outgoing
+              ? otherMapped
+              : mappedAccountId;
+          if (transaction['account_id'] == expectedSource &&
+              transaction['destination_account_id'] == expectedDestination) {
+            compatibleAttached.add(evidence);
+          }
         }
-        if (compatible.length == 1) {
-          await attachTo(compatible.single['id'] as int);
+        final attachedTransactionIds = compatibleAttached
+            .map((row) => row['transaction_id'] as int)
+            .toSet();
+        if (attachedTransactionIds.length == 1) {
+          await attachTo(attachedTransactionIds.single);
           return SmsTransferSaveOutcome.attached;
         }
-      }
 
-      final pendingRows = await txn.query(
-        'sms_transfer_observations',
-        where: 'status=? AND direction=? AND amount=? AND currency=? AND mapped_account_id<>?',
-        whereArgs: [
-          SmsTransferObservationStatus.pending.name,
-          opposite.name,
-          candidate.amountMinor,
-          candidate.currency.toUpperCase(),
-          mappedAccountId,
-        ],
-      );
-      final compatiblePending = pendingRows.where((row) {
-        if (!closeEnough(row['sms_received_at'] as String) ||
-            !compatibleHint(row['account_hint_hash'])) {
-          return false;
-        }
-        final otherMapped = row['mapped_account_id'] as int;
-        final otherLinked = row['linked_account_id'] as int?;
-        final relationshipsAgree =
-            (linkedAccountId == null || linkedAccountId == otherMapped) &&
-            (otherLinked == null || otherLinked == mappedAccountId);
-        final sharedHint =
-            candidate.accountHintHash != null &&
-            row['account_hint_hash'] == candidate.accountHintHash;
-        final configuredRelationship =
-            linkedAccountId == otherMapped || otherLinked == mappedAccountId;
-        return relationshipsAgree && (sharedHint || configuredRelationship);
-      }).toList();
-
-      if (compatiblePending.length == 1) {
-        final other = compatiblePending.single;
-        sourceAccountId = direction == TransferObservationDirection.outgoing
-            ? mappedAccountId
-            : other['mapped_account_id'] as int;
-        destinationAccountId =
-            direction == TransferObservationDirection.outgoing
-            ? other['mapped_account_id'] as int
-            : mappedAccountId;
-        final transactionId = await _insertCanonicalSmsTransfer(
-          txn,
-          amountMinor: candidate.amountMinor,
-          sourceAccountId: sourceAccountId,
-          destinationAccountId: destinationAccountId,
-          date: direction == TransferObservationDirection.outgoing
-              ? candidate.transactionDate
-              : DateTime.parse(other['sms_received_at'] as String),
-          source:
-              source == TransactionSource.smsLive ||
-                  other['source'] == TransactionSource.smsLive.name
-              ? TransactionSource.smsLive
-              : TransactionSource.smsImport,
-          providerTransactionAt:
+        if (linkedAccountId != null && linkedAccountId != mappedAccountId) {
+          sourceAccountId = direction == TransferObservationDirection.outgoing
+              ? mappedAccountId
+              : linkedAccountId;
+          destinationAccountId =
               direction == TransferObservationDirection.outgoing
-              ? candidate.providerTransactionAt
-              : DateTime.tryParse(
-                  other['provider_transaction_at'] as String? ?? '',
-                ),
-          smsReceivedAt: smsReceivedAt,
-        );
-        await txn.update(
+              ? linkedAccountId
+              : mappedAccountId;
+          final existing = await txn.query(
+            'transactions',
+            where: 'type=? AND status=? AND amount=? AND account_id=? AND destination_account_id=?',
+            whereArgs: [
+              TransactionType.transfer.name,
+              ReviewStatus.confirmed.name,
+              candidate.amountMinor,
+              sourceAccountId,
+              destinationAccountId,
+            ],
+          );
+          final compatible = <Map<String, Object?>>[];
+          for (final row in existing) {
+            final observations = await txn.query(
+              'sms_transfer_observations',
+              where: 'transaction_id=?',
+              whereArgs: [row['id']],
+            );
+            final timeMatches = observations.any(
+              (item) => closeEnough(item['sms_received_at'] as String),
+            );
+            final hintMatches = observations.every(
+              (item) => compatibleHint(item['account_hint_hash']),
+            );
+            if (timeMatches && hintMatches) compatible.add(row);
+          }
+          if (compatible.length == 1) {
+            await attachTo(compatible.single['id'] as int);
+            return SmsTransferSaveOutcome.attached;
+          }
+        }
+
+        final pendingRows = await txn.query(
           'sms_transfer_observations',
-          {'transaction_id': transactionId, 'status': 'attached'},
-          where: 'id=?',
-          whereArgs: [other['id']],
+          where: 'status=? AND direction=? AND amount=? AND currency=? AND mapped_account_id<>?',
+          whereArgs: [
+            SmsTransferObservationStatus.pending.name,
+            opposite.name,
+            candidate.amountMinor,
+            candidate.currency.toUpperCase(),
+            mappedAccountId,
+          ],
         );
-        await txn.insert('transaction_fingerprints', {
-          'fingerprint': other['fingerprint'],
-          'transaction_id': transactionId,
-          'created_at': now,
-        }, conflictAlgorithm: ConflictAlgorithm.ignore);
-        await attachTo(transactionId);
-        return SmsTransferSaveOutcome.created;
-      }
+        final compatiblePending = pendingRows.where((row) {
+          if (!closeEnough(row['sms_received_at'] as String) ||
+              !compatibleHint(row['account_hint_hash'])) {
+            return false;
+          }
+          final otherMapped = row['mapped_account_id'] as int;
+          final otherLinked = row['linked_account_id'] as int?;
+          final relationshipsAgree =
+              (linkedAccountId == null || linkedAccountId == otherMapped) &&
+              (otherLinked == null || otherLinked == mappedAccountId);
+          final sharedHint =
+              candidate.accountHintHash != null &&
+              row['account_hint_hash'] == candidate.accountHintHash;
+          final configuredRelationship =
+              linkedAccountId == otherMapped || otherLinked == mappedAccountId;
+          return relationshipsAgree && (sharedHint || configuredRelationship);
+        }).toList();
 
-      if (sourceAccountId != null && destinationAccountId != null) {
-        final transactionId = await _insertCanonicalSmsTransfer(
-          txn,
-          amountMinor: candidate.amountMinor,
-          sourceAccountId: sourceAccountId,
-          destinationAccountId: destinationAccountId,
-          date: candidate.transactionDate,
-          source: source,
-          providerTransactionAt: candidate.providerTransactionAt,
-          smsReceivedAt: smsReceivedAt,
-        );
-        await attachTo(transactionId);
-        return SmsTransferSaveOutcome.created;
-      }
+        if (compatiblePending.length == 1) {
+          final other = compatiblePending.single;
+          sourceAccountId = direction == TransferObservationDirection.outgoing
+              ? mappedAccountId
+              : other['mapped_account_id'] as int;
+          destinationAccountId =
+              direction == TransferObservationDirection.outgoing
+              ? other['mapped_account_id'] as int
+              : mappedAccountId;
+          final transactionId = await _insertCanonicalSmsTransfer(
+            txn,
+            amountMinor: candidate.amountMinor,
+            sourceAccountId: sourceAccountId,
+            destinationAccountId: destinationAccountId,
+            date: direction == TransferObservationDirection.outgoing
+                ? candidate.transactionDate
+                : DateTime.parse(other['sms_received_at'] as String),
+            source:
+                source == TransactionSource.smsLive ||
+                    other['source'] == TransactionSource.smsLive.name
+                ? TransactionSource.smsLive
+                : TransactionSource.smsImport,
+            providerTransactionAt:
+                direction == TransferObservationDirection.outgoing
+                ? candidate.providerTransactionAt
+                : DateTime.tryParse(
+                    other['provider_transaction_at'] as String? ?? '',
+                  ),
+            smsReceivedAt: smsReceivedAt,
+          );
+          await txn.update(
+            'sms_transfer_observations',
+            {'transaction_id': transactionId, 'status': 'attached'},
+            where: 'id=?',
+            whereArgs: [other['id']],
+          );
+          await txn.insert('transaction_fingerprints', {
+            'fingerprint': other['fingerprint'],
+            'transaction_id': transactionId,
+            'created_at': now,
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+          await attachTo(transactionId);
+          return SmsTransferSaveOutcome.created;
+        }
 
-      await txn.insert('sms_transfer_observations', observationValues());
-      return SmsTransferSaveOutcome.pending;
+        if (sourceAccountId != null && destinationAccountId != null) {
+          final transactionId = await _insertCanonicalSmsTransfer(
+            txn,
+            amountMinor: candidate.amountMinor,
+            sourceAccountId: sourceAccountId,
+            destinationAccountId: destinationAccountId,
+            date: candidate.transactionDate,
+            source: source,
+            providerTransactionAt: candidate.providerTransactionAt,
+            smsReceivedAt: smsReceivedAt,
+          );
+          await attachTo(transactionId);
+          return SmsTransferSaveOutcome.created;
+        }
+
+        await txn.insert('sms_transfer_observations', observationValues());
+        return SmsTransferSaveOutcome.pending;
       });
     } on DatabaseException catch (error) {
       if (error.isUniqueConstraintError()) {
@@ -1157,9 +1179,11 @@ class AppDatabase {
       'is_archived': b.archived ? 1 : 0,
     };
     final database = await db;
+    late final int budgetId;
     if (b.id == null) {
-      await database.insert('budgets', values);
+      budgetId = await database.insert('budgets', values);
     } else {
+      budgetId = b.id!;
       await database.update(
         'budgets',
         values,
@@ -1167,6 +1191,118 @@ class AppDatabase {
         whereArgs: [b.id],
       );
     }
+    await recordCurrentBudgetLimit(
+      Budget(
+        id: budgetId,
+        name: b.name,
+        category: b.category,
+        amountMinor: b.amountMinor,
+        period: b.period,
+        startDate: b.startDate,
+        alertThreshold: b.alertThreshold,
+        archived: b.archived,
+      ),
+      overwrite: true,
+    );
+  }
+
+  Future<void> recordCurrentBudgetLimit(
+    Budget budget, {
+    bool overwrite = false,
+    DateTime? asOf,
+  }) async {
+    if (budget.id == null) return;
+    final bounds = BudgetPeriodCalculator.current(budget, asOf: asOf);
+    final now = DateTime.now().toUtc().toIso8601String();
+    final values = <String, Object?>{
+      'budget_id': budget.id,
+      'period_start': bounds.start.toIso8601String(),
+      'period_end': bounds.end.toIso8601String(),
+      'amount': budget.amountMinor,
+      'category': budget.category,
+      'period': budget.period,
+      'recorded_at': now,
+      'updated_at': now,
+    };
+    final database = await db;
+    if (overwrite) {
+      final changed = await database.update(
+        'budget_period_limits',
+        {
+          'amount': budget.amountMinor,
+          'category': budget.category,
+          'period': budget.period,
+          'period_end': bounds.end.toIso8601String(),
+          'updated_at': now,
+        },
+        where: 'budget_id=? AND period_start=? AND period_end=? AND period=?',
+        whereArgs: [
+          budget.id,
+          bounds.start.toIso8601String(),
+          bounds.end.toIso8601String(),
+          budget.period,
+        ],
+      );
+      if (changed > 0) return;
+    }
+    await database.insert(
+      'budget_period_limits',
+      values,
+      conflictAlgorithm: ConflictAlgorithm.ignore,
+    );
+  }
+
+  Future<void> recordCurrentBudgetLimits({DateTime? asOf}) async {
+    for (final budget in await budgets()) {
+      await recordCurrentBudgetLimit(budget, asOf: asOf);
+    }
+  }
+
+  Future<List<BudgetLimitSnapshot>> budgetLimitSnapshots(int budgetId) async =>
+      (await db)
+          .query(
+            'budget_period_limits',
+            where: 'budget_id=?',
+            whereArgs: [budgetId],
+            orderBy: 'period_start DESC',
+          )
+          .then(
+            (rows) => rows
+                .map(
+                  (row) => BudgetLimitSnapshot(
+                    budgetId: row['budget_id'] as int,
+                    start: DateTime.parse(row['period_start'] as String),
+                    end: DateTime.parse(row['period_end'] as String),
+                    amountMinor: row['amount'] as int,
+                    category: row['category'] as String,
+                    period: row['period'] as String,
+                  ),
+                )
+                .toList(),
+          );
+
+  Future<List<Transaction>> budgetHistoryTransactions({
+    String? category,
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final categoryClause = category == null ? '' : 'category=? AND ';
+    return (await db)
+        .query(
+          'transactions',
+          where:
+              '${categoryClause}type=? AND status=? '
+              'AND transaction_date>=? AND transaction_date<?',
+          whereArgs: [
+            ?category,
+            TransactionType.expense.name,
+            ReviewStatus.confirmed.name,
+            start.toIso8601String(),
+            end.add(const Duration(days: 1)).toIso8601String(),
+          ],
+          orderBy: 'transaction_date DESC',
+        )
+        .then((rows) => rows.map(_transaction).toList());
   }
 
   Future<void> archiveBudget(int id) async => (await db).update(
@@ -1175,7 +1311,7 @@ class AppDatabase {
     where: 'id=?',
     whereArgs: [id],
   );
-  
+
   Future<void> saveCategory(Category category) async {
     final now = DateTime.now().toIso8601String();
     final values = {
@@ -1233,7 +1369,7 @@ class AppDatabase {
     where: 'id=?',
     whereArgs: [id],
   );
-  
+
   Future<void> saveGoal(Goal goal) async {
     final values = {
       'name': goal.name,
@@ -1280,19 +1416,19 @@ class AppDatabase {
 
   Future<void> deleteGoal(int id) async =>
       (await db).delete('goals', where: 'id=?', whereArgs: [id]);
-  
+
   Future<List<Map<String, Object?>>> merchantRules() async =>
       (await db).query('merchant_rules', orderBy: 'normalized_merchant');
-  
+
   Future<void> saveMerchantRule(String merchant, String category) async =>
       (await db).insert('merchant_rules', {
         'normalized_merchant': normalizeMerchant(merchant),
         'category': category,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-  
+
   Future<void> deleteMerchantRule(int id) async =>
       (await db).delete('merchant_rules', where: 'id=?', whereArgs: [id]);
-  
+
   Future<List<RecurringTransaction>> recurringTransactions() async => (await db)
       .query(
         'recurring_transactions',
@@ -1323,7 +1459,7 @@ class AppDatabase {
             )
             .toList(),
       );
-  
+
   Future<void> saveRecurringTransaction(RecurringTransaction item) async {
     final values = {
       'title': item.title,
@@ -1357,7 +1493,27 @@ class AppDatabase {
     where: 'id=?',
     whereArgs: [id],
   );
-  
+
+  Future<void> setRecurringTransactionEnabled(int id, bool enabled) async =>
+      (await db).update(
+        'recurring_transactions',
+        {'is_enabled': enabled ? 1 : 0},
+        where: 'id=? AND is_archived=0',
+        whereArgs: [id],
+      );
+
+  Future<List<Transaction>> recurringTransactionHistory(int recurringId) async {
+    final rows = await (await db).rawQuery(
+      'SELECT t.* FROM transactions t '
+      'INNER JOIN recurring_occurrences occurrence '
+      'ON occurrence.transaction_id=t.id '
+      'WHERE occurrence.recurring_id=? '
+      'ORDER BY t.transaction_date DESC, t.id DESC',
+      [recurringId],
+    );
+    return rows.map(_transaction).toList(growable: false);
+  }
+
   Future<bool> generateRecurringOccurrence(
     RecurringTransaction item,
     DateTime occurrence,
@@ -1373,7 +1529,15 @@ class AppDatabase {
             ),
           ) ??
           0;
-      if (count > 0) return false;
+      if (count > 0) {
+        await txn.update(
+          'recurring_transactions',
+          {'next_occurrence': next.toIso8601String()},
+          where: 'id=?',
+          whereArgs: [item.id],
+        );
+        return false;
+      }
       final transactionId = await txn.insert('transactions', {
         'amount': item.amountMinor,
         'type': item.type.name,
@@ -1466,7 +1630,24 @@ class AppDatabase {
       'is_enabled': provider.enabled ? 1 : 0,
     };
     if (provider.id == null) {
-      await (await db).insert('sms_providers', values);
+      final database = await db;
+      final existing = await database.query(
+        'sms_providers',
+        columns: const ['id'],
+        where: 'name = ? COLLATE NOCASE',
+        whereArgs: [provider.name.trim()],
+        limit: 1,
+      );
+      if (existing.isEmpty) {
+        await database.insert('sms_providers', values);
+      } else {
+        await database.update(
+          'sms_providers',
+          values,
+          where: 'id=?',
+          whereArgs: [existing.single['id']],
+        );
+      }
     } else {
       await (await db).update(
         'sms_providers',

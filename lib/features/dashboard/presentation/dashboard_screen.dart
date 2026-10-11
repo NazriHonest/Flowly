@@ -7,6 +7,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../accounts/domain/services/account_balance_calculator.dart';
 import '../../accounts/providers/account_provider.dart';
+import '../../accounts/presentation/balance_privacy.dart';
 import '../../budgets/providers/budget_provider.dart';
 import '../../budgets/domain/services/budget_spending_calculator.dart';
 import '../../budgets/presentation/budgets_screen.dart';
@@ -318,6 +319,9 @@ class _BalanceHero extends StatelessWidget {
                   ],
                 ),
               ),
+              const BalanceVisibilityButton(
+                foregroundColor: AppColors.onPrimary,
+              ),
             ],
           ),
 
@@ -326,8 +330,8 @@ class _BalanceHero extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
-            child: Text(
-              MoneyFormatter.format(balance),
+            child: AccountBalanceText(
+              amountMinor: balance,
               style: const TextStyle(
                 color: AppColors.onPrimary,
                 fontSize: 34,
@@ -729,9 +733,7 @@ class _OverallBudgetCard extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: overBudget
-                        ? progressColor
-                        : colors.onSurfaceVariant,
+                    color: overBudget ? progressColor : colors.onSurfaceVariant,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -796,10 +798,8 @@ class _BudgetSummaryMetric extends StatelessWidget {
         value,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.titleMedium?.copyWith(
-          color: color,
-          fontWeight: FontWeight.w800,
-        ),
+        style: Theme.of(context).textTheme.titleMedium
+            ?.copyWith(color: color, fontWeight: FontWeight.w800),
       ),
     ],
   );

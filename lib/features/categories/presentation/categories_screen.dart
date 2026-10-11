@@ -1,3 +1,4 @@
+import 'package:flowly/features/categories/presentation/category_form_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,9 +9,6 @@ import '../providers/category_provider.dart';
 import '../../transactions/providers/transaction_provider.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../../core/theme/app_colors.dart';
-import '../../budgets/providers/budget_provider.dart';
-import '../../categorization/providers/merchant_rule_provider.dart';
-import '../../recurring/providers/recurring_provider.dart';
 import '../../transactions/presentation/transaction_details_screen.dart';
 import '../../transactions/presentation/widgets/transaction_card.dart';
 
@@ -570,140 +568,4 @@ class CategoryDetailsScreen extends ConsumerWidget {
   }
 }
 
-class CategoryFormScreen extends ConsumerStatefulWidget {
-  const CategoryFormScreen({super.key, this.category});
-  final Category? category;
-  @override
-  ConsumerState<CategoryFormScreen> createState() => _CategoryFormScreenState();
-}
 
-class _CategoryFormScreenState extends ConsumerState<CategoryFormScreen> {
-  final _formKey = GlobalKey<FormState>();
-  late final _name = TextEditingController(text: widget.category?.name ?? '');
-  late String _type = widget.category?.type ?? 'expense';
-  late int _color = widget.category?.color ?? AppColors.primary.toARGB32();
-  late int _icon = widget.category?.icon ?? Icons.category.codePoint;
-  static const _icons = [
-    Icons.category,
-    Icons.shopping_basket,
-    Icons.restaurant,
-    Icons.wifi,
-    Icons.directions_car,
-    Icons.receipt_long,
-    Icons.payments,
-    Icons.favorite,
-  ];
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(widget.category == null ? 'Add category' : 'Edit category'),
-    ),
-    body: Form(
-      key: _formKey,
-      child: ListView(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          AppLayout.safeScrollBottom(context),
-        ),
-        children: [
-          TextFormField(
-            controller: _name,
-            decoration: const InputDecoration(labelText: 'Name'),
-            validator: (value) =>
-                (value ?? '').trim().isEmpty ? 'Enter a category name' : null,
-          ),
-          const SizedBox(height: 12),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'expense', label: Text('Expense')),
-              ButtonSegment(value: 'income', label: Text('Income')),
-            ],
-            selected: {_type == 'both' ? 'expense' : _type},
-            onSelectionChanged: (value) => setState(() => _type = value.first),
-          ),
-          const SizedBox(height: 20),
-          const Text('Icon', style: TextStyle(fontWeight: FontWeight.w700)),
-          Wrap(
-            spacing: 8,
-            children: _icons
-                .map(
-                  (icon) => ChoiceChip(
-                    label: Icon(icon),
-                    selected: _icon == icon.codePoint,
-                    onSelected: (_) => setState(() => _icon = icon.codePoint),
-                  ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 20),
-          const Text('Colour', style: TextStyle(fontWeight: FontWeight.w700)),
-          Wrap(
-            spacing: 8,
-            children: AppColors.identityPalette
-                .map((tone) => tone.toARGB32())
-                .map(
-                  (color) => ChoiceChip(
-                    label: const Text(''),
-                    selected: _color == color,
-                    avatar: CircleAvatar(backgroundColor: Color(color)),
-                    onSelected: (_) => setState(() => _color = color),
-                  ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 28),
-          FilledButton(
-            onPressed: _save,
-            child: Text(
-              widget.category == null ? 'Save category' : 'Save changes',
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-  Future<void> _save() async {
-    if (!_formKey.currentState!.validate()) return;
-    try {
-      final name = _name.text.trim();
-      final categoryWasRenamed =
-          widget.category != null && widget.category!.name != name;
-      await ref
-          .read(categoryListProvider.notifier)
-          .save(
-            Category(
-              id: widget.category?.id,
-              name: name,
-              icon: _icon,
-              color: _color,
-              type: _type,
-            ),
-          );
-      if (categoryWasRenamed) {
-        await Future.wait([
-          ref.read(transactionListProvider.notifier).refresh(),
-          ref.read(budgetListProvider.notifier).refresh(),
-          ref.read(recurringListProvider.notifier).refresh(),
-          ref.read(merchantRuleListProvider.notifier).refresh(),
-        ]);
-      }
-      if (mounted) Navigator.pop(context);
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('A category with that name already exists.'),
-          ),
-        );
-      }
-    }
-  }
-}

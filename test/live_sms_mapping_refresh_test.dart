@@ -17,9 +17,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  SharedPreferences.setMockInitialValues({
-    'notifications.needsReview': false,
-  });
+  SharedPreferences.setMockInitialValues({'notifications.needsReview': false});
   sqfliteFfiInit();
   databaseFactory = databaseFactoryFfi;
 
@@ -49,17 +47,15 @@ void main() {
       );
 
       await database.saveAccount(
-        const Account(
-          name: 'Wallet',
-          openingBalanceMinor: 0,
-          currency: 'USD',
-        ),
+        const Account(name: 'Wallet', openingBalanceMinor: 0, currency: 'USD'),
       );
       await database.saveSmsProvider(
         const SmsProvider(name: 'JEEB', senderAliases: ['fixture']),
       );
       final account = (await database.accounts()).single;
-      final provider = (await database.smsProviders()).single;
+      final provider = (await database.smsProviders()).firstWhere(
+        (item) => item.name == 'JEEB',
+      );
       await database.setProviderAccountMapping(provider.id!, account.id!);
 
       final outcome = await processor.handle(

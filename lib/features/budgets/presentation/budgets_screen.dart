@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 import '../../../core/formatters/money_formatter.dart';
 import '../../../core/layout/app_layout.dart';
@@ -7,9 +8,16 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/widgets/app_widgets.dart';
 import '../../transactions/domain/entities/transaction.dart';
 import '../../transactions/providers/transaction_provider.dart';
+import '../../transactions/presentation/transaction_details_screen.dart';
+import '../../transactions/presentation/transactions_screen.dart';
+import '../../accounts/providers/account_provider.dart';
+import '../../categories/providers/category_provider.dart';
 import '../domain/entities/budget.dart';
+import '../domain/entities/budget_history.dart';
 import '../domain/services/budget_spending_calculator.dart';
+import '../domain/services/budget_period_calculator.dart';
 import '../providers/budget_provider.dart';
+import '../providers/budget_history_provider.dart';
 import 'budget_form_screen.dart';
 
 class BudgetsScreen extends ConsumerWidget {
@@ -185,80 +193,1231 @@ class BudgetsScreen extends ConsumerWidget {
   }
 }
 
-class BudgetDetailsScreen extends ConsumerWidget {
+class BudgetDetailsScreen extends ConsumerStatefulWidget {
   const BudgetDetailsScreen({super.key, required this.budget});
 
   final Budget budget;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final current = budget.id == null
-        ? budget
+  ConsumerState<BudgetDetailsScreen> createState() =>
+      _BudgetDetailsScreenState();
+}
+
+class _BudgetDetailsScreenState extends ConsumerState<BudgetDetailsScreen> {
+  int selectedTab = 0;
+  int historyPeriodCount = 6;
+
+  @override
+  Widget build(BuildContext context) {
+    final current = widget.budget.id == null
+        ? widget.budget
         : ref
                   .watch(budgetListProvider)
                   .valueOrNull
-                  ?.where((item) => item.id == budget.id)
+                  ?.where((item) => item.id == widget.budget.id)
                   .firstOrNull ??
-              budget;
+              widget.budget;
     final transactions = ref.watch(transactionListProvider).value ?? [];
+    final accounts = ref.watch(accountListProvider).valueOrNull ?? const [];
+    final categories = ref.watch(categoryListProvider).valueOrNull ?? const [];
 
-    final related =
-        BudgetSpendingCalculator.countedTransactions(current, transactions)
-            .toList()
-          ..sort((a, b) => b.date.compareTo(a.date));
+    final related = BudgetSpendingCalculator.countedTransactions(
+      current,
+      transactions,
+    ).toList()..sort((a, b) => b.date.compareTo(a.date));
 
     final spent = BudgetSpendingCalculator.spent(current, transactions);
 
     final ratio = current.amountMinor == 0
-        ? 0.0
+        ? (spent == 0 ? 0.0 : double.infinity)
         : spent / current.amountMinor;
 
-    final color = _progressColor(ratio, current.alertThreshold);
-
     final difference = current.amountMinor - spent;
-
-    final isOverBudget = difference < 0;
-
-    final differenceAmount = difference.abs();
+    final bounds = BudgetPeriodCalculator.current(current);
+    final category = categories
+        .where((item) => item.name == current.category)
+        .firstOrNull;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(current.name),
+        title: const SizedBox.shrink(),
         actions: [
-          _RoundAction(
-            icon: Icons.edit_outlined,
-            label: 'Edit budget',
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => BudgetFormScreen(budget: current),
+          PopupMenuButton<_BudgetDetailsAction>(
+            tooltip: 'Budget options',
+            onSelected: (action) => _handleAction(action, current),
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: _BudgetDetailsAction.edit,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.edit_outlined),
+                  title: Text('Edit budget'),
+                ),
+              ),
+              PopupMenuItem(
+                value: _BudgetDetailsAction.archive,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.archive_outlined),
+                  title: Text('Archive budget'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: ListView(
+        key: PageStorageKey('budget-details-${current.id}-$selectedTab'),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          4,
+          16,
+          AppLayout.safeScrollBottom(context),
+        ),
+        children: [
+          _DetailsIdentity(
+            budget: current,
+            categoryIcon: category?.icon,
+            categoryColor: category?.color,
+            bounds: bounds,
+          ),
+          const SizedBox(height: 18),
+          _DetailsSummaryCard(
+            budget: current,
+            spent: spent,
+            ratio: ratio,
+            difference: difference,
+          ),
+          const SizedBox(height: 14),
+          _DetailsIndicators(budget: current, ratio: ratio, bounds: bounds),
+          const SizedBox(height: 18),
+          BudgetDetailsSegmentedControl(
+            selected: selectedTab,
+            onChanged: (value) => setState(() => selectedTab = value),
+          ),
+          const SizedBox(height: 16),
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: selectedTab == 0
+                ? _DetailsOverview(
+                    key: const ValueKey('overview'),
+                    budget: current,
+                    bounds: bounds,
+                    transactions: related,
+                    accounts: accounts,
+                  )
+                : _DetailsHistory(
+                    key: const ValueKey('history'),
+                    budget: current,
+                    periodCount: historyPeriodCount,
+                    onPeriodCountChanged: (value) =>
+                        setState(() => historyPeriodCount = value),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _handleAction(_BudgetDetailsAction action, Budget budget) async {
+    if (action == _BudgetDetailsAction.edit) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (_) => BudgetFormScreen(budget: budget)),
+      );
+      return;
+    }
+    if (!await showFlowlyConfirmation(
+      context,
+      title: 'Archive budget?',
+      message: 'This budget will be removed from active tracking.',
+      confirmLabel: 'Archive budget',
+    )) {
+      return;
+    }
+    await ref.read(budgetListProvider.notifier).archive(budget.id!);
+    if (mounted) Navigator.pop(context);
+  }
+}
+
+enum _BudgetDetailsAction { edit, archive }
+
+String _usd(int value) => MoneyFormatter.format(value, code: 'USD');
+
+class _DetailsIdentity extends StatelessWidget {
+  const _DetailsIdentity({
+    required this.budget,
+    required this.categoryIcon,
+    required this.categoryColor,
+    required this.bounds,
+  });
+
+  final Budget budget;
+  final int? categoryIcon;
+  final int? categoryColor;
+  final BudgetPeriodBounds bounds;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final accent = categoryColor == null
+        ? AppColors.primary
+        : Color(categoryColor!);
+    final dates = MaterialLocalizations.of(context);
+    return Row(
+      children: [
+        Container(
+          width: 64,
+          height: 64,
+          decoration: BoxDecoration(
+            color: accent.withValues(alpha: .12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            categoryIcon == null
+                ? Icons.savings_outlined
+                // Persisted Material icon code points are intentionally dynamic.
+                // ignore: non_const_argument_for_const_parameter
+                : IconData(categoryIcon!, fontFamily: 'MaterialIcons'),
+            color: accent,
+            size: 30,
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                budget.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.titleLarge
+                    ?.copyWith(fontWeight: FontWeight.w900),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                '${_capitalize(budget.period)} budget • '
+                '${dates.formatMediumDate(bounds.start)} – '
+                '${dates.formatMediumDate(bounds.end)}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 10),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: budget.archived
+                ? colors.surfaceContainerHighest
+                : AppColors.income.withValues(alpha: .12),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            budget.archived ? 'Archived' : 'Active',
+            style: Theme.of(context).textTheme.labelMedium?.copyWith(
+              color: budget.archived
+                  ? colors.onSurfaceVariant
+                  : FlowlySemanticColors.of(context).incomeForeground,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailsSummaryCard extends StatelessWidget {
+  const _DetailsSummaryCard({
+    required this.budget,
+    required this.spent,
+    required this.ratio,
+    required this.difference,
+  });
+
+  final Budget budget;
+  final int spent;
+  final double ratio;
+  final int difference;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _progressColor(ratio, budget.alertThreshold);
+    final remainingLabel = difference < 0 ? 'Overspent' : 'Remaining';
+    final percentage = ratio.isFinite ? '${(ratio * 100).round()}%' : '—';
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _DetailsMetric(
+                    value: _usd(difference.abs()),
+                    label: remainingLabel,
+                    valueColor: difference < 0
+                        ? FlowlySemanticColors.of(context).expenseForeground
+                        : FlowlySemanticColors.of(context).incomeForeground,
+                  ),
+                ),
+                _DetailsMetric(
+                  value: percentage,
+                  label: budget.amountMinor == 0 ? 'No limit' : 'Used',
+                  alignEnd: true,
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(99),
+              child: LinearProgressIndicator(
+                minHeight: 12,
+                value: ratio.isFinite ? ratio.clamp(0, 1) : 1,
+                color: color,
+                backgroundColor: Theme.of(context)
+                    .colorScheme
+                    .surfaceContainerHighest,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Text(
+                  '${_usd(spent)} spent',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const Spacer(),
+                Text(
+                  '${_usd(budget.amountMinor)} budget',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailsMetric extends StatelessWidget {
+  const _DetailsMetric({
+    required this.value,
+    required this.label,
+    this.alignEnd = false,
+    this.valueColor,
+  });
+
+  final String value;
+  final String label;
+  final bool alignEnd;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: alignEnd
+        ? CrossAxisAlignment.end
+        : CrossAxisAlignment.start,
+    children: [
+      Text(
+        value,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.headlineSmall
+            ?.copyWith(fontWeight: FontWeight.w900, color: valueColor),
+      ),
+      const SizedBox(height: 2),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
+}
+
+class _DetailsIndicators extends StatelessWidget {
+  const _DetailsIndicators({
+    required this.budget,
+    required this.ratio,
+    required this.bounds,
+  });
+
+  final Budget budget;
+  final double ratio;
+  final BudgetPeriodBounds bounds;
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateTime.now();
+    final date = DateTime(today.year, today.month, today.day);
+    final days = bounds.end.difference(date).inDays;
+    final status = ratio >= 1
+        ? 'Over budget'
+        : ratio >= budget.alertThreshold
+        ? 'Warning'
+        : 'On track';
+    final statusDetail = ratio >= 1
+        ? 'Limit exceeded'
+        : ratio >= budget.alertThreshold
+        ? 'Above ${(budget.alertThreshold * 100).round()}% alert'
+        : 'Below ${(budget.alertThreshold * 100).round()}%';
+    final color = _progressColor(ratio, budget.alertThreshold);
+    return Row(
+      children: [
+        Expanded(
+          child: _DetailsIndicator(
+            icon: Icons.calendar_today_outlined,
+            color: AppColors.primary,
+            title: days < 0
+                ? 'Ended'
+                : days == 0
+                ? 'Ends today'
+                : '$days days',
+            subtitle: days > 0 ? 'remaining' : 'current period',
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _DetailsIndicator(
+            icon: ratio >= 1
+                ? Icons.error_outline_rounded
+                : ratio >= budget.alertThreshold
+                ? Icons.warning_amber_rounded
+                : Icons.notifications_none_rounded,
+            color: color,
+            title: status,
+            subtitle: statusDetail,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailsIndicator extends StatelessWidget {
+  const _DetailsIndicator({
+    required this.icon,
+    required this.color,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(13),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: .11),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 20),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: color, fontWeight: FontWeight.w900),
+                ),
+                Text(
+                  subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class BudgetDetailsSegmentedControl extends StatelessWidget {
+  const BudgetDetailsSegmentedControl({
+    super.key,
+    required this.selected,
+    required this.onChanged,
+  });
+
+  final int selected;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: colors.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          for (final item in const [(0, 'Overview'), (1, 'History')])
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: selected == item.$1,
+                child: InkWell(
+                  key: ValueKey(
+                    item.$1 == 0 ? 'budget-overview-tab' : 'budget-history-tab',
+                  ),
+                  borderRadius: BorderRadius.circular(13),
+                  onTap: () => onChanged(item.$1),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    alignment: Alignment.center,
+                    constraints: const BoxConstraints(minHeight: 44),
+                    decoration: BoxDecoration(
+                      color: selected == item.$1
+                          ? AppColors.primaryDark
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(13),
+                    ),
+                    child: Text(
+                      item.$2,
+                      style: TextStyle(
+                        color: selected == item.$1
+                            ? Colors.white
+                            : colors.onSurfaceVariant,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailsOverview extends StatelessWidget {
+  const _DetailsOverview({
+    super.key,
+    required this.budget,
+    required this.bounds,
+    required this.transactions,
+    required this.accounts,
+  });
+
+  final Budget budget;
+  final BudgetPeriodBounds bounds;
+  final List<Transaction> transactions;
+  final List<dynamic> accounts;
+
+  @override
+  Widget build(BuildContext context) {
+    final localizations = MaterialLocalizations.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _DetailsSectionCard(
+          title: 'Budget details',
+          children: [
+            _DetailsRow(
+              icon: Icons.account_balance_wallet_outlined,
+              label: 'Budget amount',
+              value: _usd(budget.amountMinor),
+            ),
+            _DetailsRow(
+              icon: Icons.calendar_month_outlined,
+              label: 'Period',
+              value: _capitalize(budget.period),
+            ),
+            _DetailsRow(
+              icon: Icons.event_outlined,
+              label: 'Start date',
+              value: localizations.formatMediumDate(bounds.start),
+            ),
+            _DetailsRow(
+              icon: Icons.event_available_outlined,
+              label: 'End date',
+              value: localizations.formatMediumDate(bounds.end),
+            ),
+            _DetailsRow(
+              icon: Icons.category_outlined,
+              label: 'Category',
+              value: budget.category,
+            ),
+            _DetailsRow(
+              icon: Icons.notifications_none_rounded,
+              label: 'Alert threshold',
+              value:
+                  '${(budget.alertThreshold * 100).round()}% '
+                  '(${_usd((budget.amountMinor * budget.alertThreshold).round())})',
+              last: true,
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _DetailsRecentExpenses(
+          budget: budget,
+          bounds: bounds,
+          transactions: transactions,
+          accounts: accounts,
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailsSectionCard extends StatelessWidget {
+  const _DetailsSectionCard({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 10),
+          ...children,
+        ],
+      ),
+    ),
+  );
+}
+
+class _DetailsRow extends StatelessWidget {
+  const _DetailsRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+    this.last = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+  final bool last;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  icon,
+                  size: 20,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 12),
+                Text(label, style: Theme.of(context).textTheme.bodyMedium),
+              ],
+            ),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.end,
+                style: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
+        ),
+      ),
+      if (!last) const Divider(height: 1),
+    ],
+  );
+}
+
+class _DetailsRecentExpenses extends StatelessWidget {
+  const _DetailsRecentExpenses({
+    required this.budget,
+    required this.bounds,
+    required this.transactions,
+    required this.accounts,
+  });
+
+  final Budget budget;
+  final BudgetPeriodBounds bounds;
+  final List<Transaction> transactions;
+  final List<dynamic> accounts;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(18, 14, 10, 8),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Recent expenses',
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
+                ),
+              ),
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TransactionsScreen(
+                      initialCategory: budget.category,
+                      initialDateRange: DateTimeRange(
+                        start: bounds.start,
+                        end: bounds.end,
+                      ),
+                    ),
+                  ),
+                ),
+                child: const Text('View all'),
+              ),
+            ],
+          ),
+          if (transactions.isEmpty)
+            const Padding(
+              padding: EdgeInsets.fromLTRB(4, 24, 12, 28),
+              child: AppEmptyState(
+                icon: Icons.receipt_long_outlined,
+                title: 'No expenses this period',
+                message:
+                    'Confirmed expenses in this category will appear here.',
+              ),
+            )
+          else
+            ...transactions
+                .take(5)
+                .map(
+                  (transaction) => _BudgetExpenseRow(
+                    transaction: transaction,
+                    accountName: accounts
+                        .where((account) => account.id == transaction.accountId)
+                        .map((account) => account.name as String)
+                        .firstOrNull,
+                  ),
+                ),
+        ],
+      ),
+    ),
+  );
+}
+
+class _BudgetExpenseRow extends StatelessWidget {
+  const _BudgetExpenseRow({required this.transaction, this.accountName});
+
+  final Transaction transaction;
+  final String? accountName;
+
+  @override
+  Widget build(BuildContext context) {
+    final date = MaterialLocalizations.of(context)
+        .formatMediumDate(transaction.date);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TransactionDetailsScreen(transaction: transaction),
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 11),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: AppColors.expense.withValues(alpha: .10),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.shopping_cart_outlined,
+                color: AppColors.expense,
+                size: 21,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    transaction.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '$date${accountName == null ? '' : ' • $accountName'}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '-${_usd(transaction.amountMinor)}',
+              style: TextStyle(
+                color: FlowlySemanticColors.of(context).expenseForeground,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+            const Icon(Icons.chevron_right_rounded, size: 20),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DetailsHistory extends ConsumerWidget {
+  const _DetailsHistory({
+    super.key,
+    required this.budget,
+    required this.periodCount,
+    required this.onPeriodCountChanged,
+  });
+
+  final Budget budget;
+  final int periodCount;
+  final ValueChanged<int> onPeriodCountChanged;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final request = (budget: budget, periodCount: periodCount);
+    final history = ref.watch(budgetHistoryProvider(request));
+    return history.when(
+      loading: () => const Card(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      ),
+      error: (error, _) => Card(
+        child: AppErrorState(
+          title: 'Couldn’t load budget history',
+          message: 'Your current budget is still available.',
+          onRetry: () => ref.invalidate(budgetHistoryProvider(request)),
+        ),
+      ),
+      data: (value) {
+        if (value.periods.isEmpty) {
+          return const Card(
+            child: AppEmptyState(
+              icon: Icons.bar_chart_rounded,
+              title: 'No history yet',
+              message: 'Budget history will appear as periods are recorded.',
+            ),
+          );
+        }
+        final previous = value.previous.reversed.toList(growable: false);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 14, 18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Spending history',
+                            style: Theme.of(context).textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w900),
+                          ),
+                        ),
+                        DropdownButtonHideUnderline(
+                          child: DropdownButton<int>(
+                            value: periodCount,
+                            borderRadius: BorderRadius.circular(14),
+                            items: const [3, 6, 12]
+                                .map(
+                                  (count) => DropdownMenuItem(
+                                    value: count,
+                                    child: Text('Last $count periods'),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) {
+                              if (value != null) onPeriodCountChanged(value);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        _HistoryLegend(
+                          color: AppColors.primary,
+                          label: 'Spent',
+                        ),
+                        SizedBox(width: 16),
+                        _HistoryLegend(label: 'Budget'),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      height: 250,
+                      child: _BudgetHistoryChart(periods: value.periods),
+                    ),
+                    if (value.periods.any(
+                      (period) => period.limitMinor == null,
+                    ))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 10),
+                        child: Text(
+                          'Muted budget bars are omitted where a historical limit was not recorded.',
+                          style: Theme.of(context).textTheme.bodySmall,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 12, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Previous periods',
+                      style: Theme.of(context).textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w900),
+                    ),
+                    const SizedBox(height: 10),
+                    if (previous.isEmpty)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Center(
+                          child: Text(
+                            'No completed periods are available yet.',
+                          ),
+                        ),
+                      )
+                    else
+                      ...previous.map(
+                        (period) => _HistoryPeriodRow(
+                          period: period,
+                          threshold: budget.alertThreshold,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => BudgetHistoryPeriodScreen(
+                                budget: budget,
+                                period: period,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _HistoryLegend extends StatelessWidget {
+  const _HistoryLegend({this.color, required this.label});
+
+  final Color? color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(
+          color: color ?? Theme.of(context).colorScheme.outlineVariant,
+          shape: BoxShape.circle,
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text(label, style: Theme.of(context).textTheme.bodySmall),
+    ],
+  );
+}
+
+class _BudgetHistoryChart extends StatelessWidget {
+  const _BudgetHistoryChart({required this.periods});
+
+  final List<BudgetHistoryPeriod> periods;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    final maximum = periods.fold<int>(0, (value, period) {
+      final periodMaximum = period.limitMinor == null
+          ? period.spentMinor
+          : period.spentMinor > period.limitMinor!
+          ? period.spentMinor
+          : period.limitMinor!;
+      return periodMaximum > value ? periodMaximum : value;
+    });
+    final maxY = maximum <= 0 ? 10000.0 : maximum * 1.2;
+    return BarChart(
+      BarChartData(
+        minY: 0,
+        maxY: maxY,
+        alignment: BarChartAlignment.spaceAround,
+        gridData: FlGridData(
+          drawVerticalLine: false,
+          horizontalInterval: maxY / 4,
+          getDrawingHorizontalLine: (_) => FlLine(
+            color: colors.outlineVariant.withValues(alpha: .55),
+            strokeWidth: 1,
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        barTouchData: BarTouchData(
+          touchTooltipData: BarTouchTooltipData(
+            getTooltipItem: (group, groupIndex, rod, rodIndex) {
+              final period = periods[group.x];
+              final label = rodIndex == 0 ? 'Spent' : 'Budget';
+              final amount = rodIndex == 0
+                  ? period.spentMinor
+                  : period.limitMinor;
+              if (amount == null) return null;
+              return BarTooltipItem(
+                '$label\n${_usd(amount)}',
+                TextStyle(
+                  color: colors.onInverseSurface,
+                  fontWeight: FontWeight.w700,
+                ),
+              );
+            },
+          ),
+        ),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          rightTitles: const AxisTitles(
+            sideTitles: SideTitles(showTitles: false),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 46,
+              interval: maxY / 4,
+              getTitlesWidget: (value, meta) => SideTitleWidget(
+                meta: meta,
+                child: Text(
+                  '\$${(value / 100).round()}',
+                  style: Theme.of(context).textTheme.labelSmall,
+                ),
               ),
             ),
           ),
-          const SizedBox(width: 6),
-          _RoundAction(
-            icon: Icons.archive_outlined,
-            label: 'Archive budget',
-            onTap: () async {
-              if (!await showFlowlyConfirmation(
-                context,
-                title: 'Archive budget?',
-                message: 'This budget will be removed from active tracking.',
-                confirmLabel: 'Archive budget',
-              )) {
-                return;
-              }
-
-              await ref.read(budgetListProvider.notifier).archive(current.id!);
-
-              if (context.mounted) {
-                Navigator.pop(context);
-              }
-            },
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              reservedSize: 40,
+              getTitlesWidget: (value, meta) {
+                final index = value.toInt();
+                if (index < 0 || index >= periods.length) {
+                  return const SizedBox.shrink();
+                }
+                final label = periods[index].label;
+                final compact = label.contains('–')
+                    ? label.split('–').first.trim()
+                    : label.split(' ').first;
+                return SideTitleWidget(
+                  meta: meta,
+                  space: 8,
+                  child: Text(
+                    compact,
+                    maxLines: 1,
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                );
+              },
+            ),
           ),
-          const SizedBox(width: 12),
+        ),
+        barGroups: [
+          for (var index = 0; index < periods.length; index++)
+            BarChartGroupData(
+              x: index,
+              barsSpace: 4,
+              barRods: [
+                BarChartRodData(
+                  toY: periods[index].spentMinor.toDouble(),
+                  width: periods.length > 8 ? 7 : 11,
+                  color: AppColors.primary,
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(4),
+                  ),
+                ),
+                if (periods[index].limitMinor != null)
+                  BarChartRodData(
+                    toY: periods[index].limitMinor!.toDouble(),
+                    width: periods.length > 8 ? 7 : 11,
+                    color: colors.outlineVariant,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(4),
+                    ),
+                  ),
+              ],
+            ),
         ],
       ),
+      duration: const Duration(milliseconds: 300),
+    );
+  }
+}
+
+class _HistoryPeriodRow extends StatelessWidget {
+  const _HistoryPeriodRow({
+    required this.period,
+    required this.threshold,
+    required this.onTap,
+  });
+
+  final BudgetHistoryPeriod period;
+  final double threshold;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = period.ratio;
+    final color = ratio == null
+        ? Theme.of(context).colorScheme.onSurfaceVariant
+        : _progressColor(ratio, threshold);
+    return InkWell(
+      borderRadius: BorderRadius.circular(12),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    period.label,
+                    style: const TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 7),
+                  Row(
+                    children: [
+                      Text(
+                        _usd(period.spentMinor),
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      Text(
+                        period.limitMinor == null
+                            ? ' • Historical limit unavailable'
+                            : ' / ${_usd(period.limitMinor!)}',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const Spacer(),
+                      Text(
+                        ratio == null
+                            ? '—'
+                            : ratio.isFinite
+                            ? '${(ratio * 100).round()}%'
+                            : '—',
+                        style: TextStyle(
+                          color: color,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 7),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(99),
+                    child: LinearProgressIndicator(
+                      minHeight: 8,
+                      value: ratio == null
+                          ? 0
+                          : ratio.isFinite
+                          ? ratio.clamp(0, 1)
+                          : 1,
+                      color: color,
+                      backgroundColor: Theme.of(context)
+                          .colorScheme
+                          .surfaceContainerHighest,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 10),
+            const Icon(Icons.chevron_right_rounded),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class BudgetHistoryPeriodScreen extends StatelessWidget {
+  const BudgetHistoryPeriodScreen({
+    super.key,
+    required this.budget,
+    required this.period,
+  });
+
+  final Budget budget;
+  final BudgetHistoryPeriod period;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = period.ratio;
+    final difference = period.limitMinor == null
+        ? null
+        : period.limitMinor! - period.spentMinor;
+    return Scaffold(
+      appBar: AppBar(title: Text(period.label)),
       body: ListView(
         padding: EdgeInsets.fromLTRB(
           16,
@@ -267,64 +1426,102 @@ class BudgetDetailsScreen extends ConsumerWidget {
           AppLayout.safeScrollBottom(context),
         ),
         children: [
-          _BudgetDetailsHero(
-            budget: current,
-            spent: spent,
-            ratio: ratio,
-            color: color,
-            differenceAmount: differenceAmount,
-            isOverBudget: isOverBudget,
-          ),
-
-          const SizedBox(height: 26),
-
-          const _SectionHeader(
-            title: 'Budget details',
-            subtitle: 'Limit, period and alert information',
-          ),
-
-          const SizedBox(height: 12),
-
-          _DetailsTable(
-            rows: [
-              ('Category', current.category, Icons.category_outlined),
-              (
-                'Budget limit',
-                MoneyFormatter.format(current.amountMinor),
-                Icons.account_balance_wallet_outlined,
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    budget.name,
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(fontWeight: FontWeight.w900),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${MaterialLocalizations.of(context).formatMediumDate(period.start)} – '
+                    '${MaterialLocalizations.of(context).formatMediumDate(period.end)}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                  const SizedBox(height: 20),
+                  _DetailsRow(
+                    icon: Icons.payments_outlined,
+                    label: 'Spent',
+                    value: _usd(period.spentMinor),
+                  ),
+                  _DetailsRow(
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: 'Budget limit',
+                    value: period.limitMinor == null
+                        ? 'Historical limit unavailable'
+                        : _usd(period.limitMinor!),
+                  ),
+                  _DetailsRow(
+                    icon: difference != null && difference < 0
+                        ? Icons.trending_up_rounded
+                        : Icons.savings_outlined,
+                    label: difference != null && difference < 0
+                        ? 'Overspent'
+                        : 'Remaining',
+                    value: difference == null ? '—' : _usd(difference.abs()),
+                  ),
+                  _DetailsRow(
+                    icon: Icons.percent_rounded,
+                    label: 'Used',
+                    value: ratio == null || !ratio.isFinite
+                        ? '—'
+                        : '${(ratio * 100).round()}%',
+                    last: true,
+                  ),
+                ],
               ),
-              (
-                'Period',
-                _capitalize(current.period),
-                Icons.calendar_month_outlined,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Expenses',
+                  style: Theme.of(context).textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w900),
+                ),
               ),
-              ('Start date', _date(current.startDate), Icons.event_outlined),
-              (
-                'Alert threshold',
-                '${(current.alertThreshold * 100).round()}%',
-                Icons.notifications_none_rounded,
+              TextButton(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => TransactionsScreen(
+                      initialCategory: period.category,
+                      initialDateRange: DateTimeRange(
+                        start: period.start,
+                        end: period.end,
+                      ),
+                    ),
+                  ),
+                ),
+                child: const Text('View all'),
               ),
             ],
           ),
-
-          const SizedBox(height: 26),
-
-          _SectionHeader(
-            title: 'Transactions counted this period',
-            subtitle: related.isEmpty
-                ? 'No qualifying spending in the active period'
-                : '${related.length} ${related.length == 1 ? 'transaction' : 'transactions'}',
-          ),
-
-          const SizedBox(height: 12),
-
-          if (related.isEmpty)
-            const _EmptyRelatedTransactions()
+          if (period.transactions.isEmpty)
+            const AppEmptyState(
+              icon: Icons.receipt_long_outlined,
+              title: 'No expenses',
+              message: 'No confirmed expenses contributed to this period.',
+            )
           else
-            ...related.map(
-              (transaction) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _TransactionCard(transaction: transaction),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Column(
+                  children: period.transactions
+                      .map(
+                        (transaction) =>
+                            _BudgetExpenseRow(transaction: transaction),
+                      )
+                      .toList(),
+                ),
               ),
             ),
         ],
@@ -355,12 +1552,6 @@ class _BudgetOverview extends StatelessWidget {
     final theme = Theme.of(context);
 
     final ratio = total == 0 ? 0.0 : spent / total;
-
-    final color = ratio >= 1
-        ? AppColors.expense
-        : ratio >= 0.8
-        ? AppColors.warning
-        : AppColors.primary;
 
     final difference = total - spent;
     final isOver = difference < 0;
@@ -759,6 +1950,9 @@ class _BudgetCard extends StatelessWidget {
   }
 }
 
+// Legacy private widgets retained temporarily for compatibility with pending
+// downstream UI work; the redesigned details view no longer instantiates them.
+// ignore: unused_element
 class _BudgetDetailsHero extends StatelessWidget {
   const _BudgetDetailsHero({
     required this.budget,
@@ -935,6 +2129,7 @@ class _ProgressRing extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _DetailsTable extends StatelessWidget {
   const _DetailsTable({required this.rows});
 
@@ -1005,6 +2200,7 @@ class _DetailsTable extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _TransactionCard extends StatelessWidget {
   const _TransactionCard({required this.transaction});
 
@@ -1068,6 +2264,7 @@ class _TransactionCard extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _EmptyRelatedTransactions extends StatelessWidget {
   const _EmptyRelatedTransactions();
 
@@ -1154,6 +2351,7 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _RoundAction extends StatelessWidget {
   const _RoundAction({
     required this.icon,

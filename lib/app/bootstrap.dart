@@ -18,6 +18,7 @@ Future<ThemeMode> bootstrap() async {
   MoneyFormatter.configure(preferences.getString('defaultCurrency') ?? 'KES');
   await LocalNotificationService.instance.initialize();
   await AppDatabase.instance.db;
+  await AppDatabase.instance.recordCurrentBudgetLimits();
   await RecurringGenerator(AppDatabase.instance).generateDue(DateTime.now());
   return themeMode;
 }

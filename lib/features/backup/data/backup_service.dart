@@ -111,8 +111,20 @@ class BackupService {
       throw const FormatException('Backup database is invalid.');
     }
     await _database.close();
-    await File(await _database.databasePath).delete();
-    await staged.rename(await _database.databasePath);
+    final original = File(await _database.databasePath);
+    final rollback = File('${original.path}.before-restore');
+    if (await rollback.exists()) await rollback.delete();
+    try {
+      if (await original.exists()) await original.rename(rollback.path);
+      await staged.rename(original.path);
+      await _database.reopen();
+      if (await rollback.exists()) await rollback.delete();
+    } catch (_) {
+      if (await original.exists()) await original.delete();
+      if (await rollback.exists()) await rollback.rename(original.path);
+      await _database.reopen();
+      rethrow;
+    }
     final settingsFile = archive.findFile('settings.json');
     if (settingsFile != null) {
       final values = jsonDecode(
@@ -130,6 +142,5 @@ class BackupService {
         }
       }
     }
-    await _database.reopen();
   }
 }

@@ -87,11 +87,10 @@ class AutomaticDetectionController extends StateNotifier<bool> {
   AutomaticDetectionController({
     this._store =
         const SharedPreferencesAutomaticDetectionStore(),
-    AutomaticDetectionPlatform platform =
+    this._platform =
         const MethodChannelAutomaticDetectionPlatform(),
     bool restoreOnCreate = true,
-  }) : _platform = platform,
-       super(false) {
+  }) : super(false) {
     _restoration = restoreOnCreate
         ? _restoreAutomaticDetection()
         : Future<bool>.value(false);

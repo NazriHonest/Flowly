@@ -13,10 +13,10 @@ class LockScreen extends StatefulWidget {
 }
 
 class _LockScreenState extends State<LockScreen> {
-  static const int _pinLength = 4;
-
   final _service = SecurityService();
 
+  int _pinLength = 4;
+  bool _biometricEnabled = false;
   String _pin = '';
   String? _error;
   bool _busy = false;
@@ -24,7 +24,18 @@ class _LockScreenState extends State<LockScreen> {
   @override
   void initState() {
     super.initState();
-    _tryBiometric();
+    _initialize();
+  }
+
+  Future<void> _initialize() async {
+    final pinLength = await _service.pinLength();
+    final biometricEnabled = await _service.biometricEnabled();
+    if (!mounted) return;
+    setState(() {
+      _pinLength = pinLength;
+      _biometricEnabled = biometricEnabled;
+    });
+    if (biometricEnabled) await _tryBiometric();
   }
 
   Future<void> _tryBiometric() async {
@@ -58,10 +69,15 @@ class _LockScreenState extends State<LockScreen> {
       return;
     }
 
+    final remaining = await _service.lockoutRemaining();
+    if (!mounted) return;
+
     setState(() {
       _busy = false;
       _pin = '';
-      _error = 'Incorrect PIN. Try again.';
+      _error = remaining == null
+          ? 'Incorrect PIN. Try again.'
+          : 'Too many attempts. Try again in ${remaining.inSeconds + 1}s.';
     });
   }
 
@@ -143,15 +159,16 @@ class _LockScreenState extends State<LockScreen> {
 
               const SizedBox(height: 30),
 
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+              Wrap(
+                spacing: 14,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
                 children: List.generate(
                   _pinLength,
                   (index) => AnimatedContainer(
                     duration: const Duration(milliseconds: 150),
                     width: 13,
                     height: 13,
-                    margin: const EdgeInsets.symmetric(horizontal: 7),
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: index < _pin.length
@@ -190,11 +207,12 @@ class _LockScreenState extends State<LockScreen> {
 
               const SizedBox(height: 12),
 
-              TextButton.icon(
-                onPressed: _busy ? null : _tryBiometric,
-                icon: const Icon(Icons.fingerprint_rounded),
-                label: const Text('Use biometrics'),
-              ),
+              if (_biometricEnabled)
+                TextButton.icon(
+                  onPressed: _busy ? null : _tryBiometric,
+                  icon: const Icon(Icons.fingerprint_rounded),
+                  label: const Text('Use biometrics'),
+                ),
             ],
           ),
         ),

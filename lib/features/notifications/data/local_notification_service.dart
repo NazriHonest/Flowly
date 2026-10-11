@@ -49,6 +49,7 @@ class LocalNotificationService {
             _channel.id,
             _channel.name,
             channelDescription: _channel.description,
+            visibility: NotificationVisibility.private,
           ),
         ),
       );

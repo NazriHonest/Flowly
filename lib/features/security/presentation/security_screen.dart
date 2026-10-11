@@ -24,6 +24,7 @@ class _SecurityScreenState extends State<SecurityScreen> {
   Future<void> _load() async {
     enabled = await service.enabled;
     timeout = await service.timeoutMinutes();
+    biometric = await service.biometricEnabled();
     if (mounted) setState(() {});
   }
 
@@ -37,7 +38,11 @@ class _SecurityScreenState extends State<SecurityScreen> {
       }
     }
     final pin = await _pinSheet(
-      disabling ? 'Enter current PIN' : changing ? 'Create a new PIN' : 'Create your PIN',
+      disabling
+          ? 'Enter current PIN'
+          : changing
+          ? 'Create a new PIN'
+          : 'Create your PIN',
     );
     if (pin == null) return;
     if (disabling && !await service.verifyPin(pin)) {
@@ -84,12 +89,13 @@ class _SecurityScreenState extends State<SecurityScreen> {
                 const SizedBox(height: 8),
                 const Text('Choose a secure numeric PIN for SpenFlo.'),
                 const SizedBox(height: 22),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
                   children: List.generate(
-                    4,
+                    pin.length > 4 ? pin.length : 4,
                     (i) => Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 7),
                       width: 10,
                       height: 10,
                       decoration: BoxDecoration(
@@ -243,11 +249,28 @@ class _SecurityScreenState extends State<SecurityScreen> {
                       onChanged: enabled!
                           ? (value) async {
                               if (value) {
-                                final ok = await service
-                                    .authenticateBiometric();
+                                final ok = await service.authenticateBiometric(
+                                  requireEnabled: false,
+                                );
+                                if (ok) {
+                                  await service.setBiometricEnabled(true);
+                                }
                                 if (mounted) setState(() => biometric = ok);
                               } else {
-                                setState(() => biometric = false);
+                                final pin = await _pinSheet(
+                                  'Enter current PIN',
+                                );
+                                if (pin == null) return;
+                                if (!await service.verifyPin(pin)) {
+                                  if (mounted) {
+                                    _notice('Incorrect PIN. Please try again.');
+                                  }
+                                  return;
+                                }
+                                await service.setBiometricEnabled(false);
+                                if (mounted) {
+                                  setState(() => biometric = false);
+                                }
                               }
                             }
                           : null,
@@ -275,7 +298,9 @@ class _SecurityScreenState extends State<SecurityScreen> {
                     'Your PIN is stored securely on this device',
                     style: TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  subtitle: Text('SpenFlo never stores your PIN in plain text.'),
+                  subtitle: Text(
+                    'SpenFlo never stores your PIN in plain text.',
+                  ),
                 ),
               ),
               if (enabled!) ...[
