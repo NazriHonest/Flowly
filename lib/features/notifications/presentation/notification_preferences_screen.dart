@@ -20,6 +20,7 @@ class _NotificationPreferencesScreenState
     'recurring': 'Recurring transactions',
     'goals': 'Goals',
     'historicalImport': 'Historical import',
+    'spendingAllowance': 'Spending allowance',
   };
   final enabled = <String, bool>{};
   @override
@@ -42,7 +43,7 @@ class _NotificationPreferencesScreenState
         ? const AppLoadingList(count: 4)
         : ListView(padding: const EdgeInsets.only(bottom: 24), children: [
             FlowlySection(title: 'Automatic tracking', children: [_preference('needsReview', Icons.rule_outlined, 'Needs review', 'When a transaction needs your confirmation'), _preference('historicalImport', Icons.download_for_offline_outlined, 'Historical import', 'When an import is ready to review')]),
-            FlowlySection(title: 'Budgets', children: [_preference('budgetWarning', Icons.warning_amber_outlined, 'Budget warnings', 'When you are approaching a limit'), _preference('budgetExceeded', Icons.error_outline, 'Budget exceeded', 'When spending passes a budget limit')]),
+            FlowlySection(title: 'Budgets and allowances', children: [_preference('spendingAllowance', Icons.speed_outlined, 'Spending allowance', 'At 80%, the limit, and first overspend'), _preference('budgetWarning', Icons.warning_amber_outlined, 'Budget warnings', 'When you are approaching a limit'), _preference('budgetExceeded', Icons.error_outline, 'Budget exceeded', 'When spending passes a budget limit')]),
             FlowlySection(title: 'Other', children: [_preference('recurring', Icons.repeat_rounded, 'Recurring transactions', 'When scheduled transactions are created'), _preference('goals', Icons.flag_outlined, 'Goal reached', 'When you reach a savings target')]),
           ]),
   );

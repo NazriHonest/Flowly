@@ -1,176 +1,254 @@
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
-import 'package:file_picker/file_picker.dart';
 
 import '../../../core/database/app_database.dart';
-import '../../backup/data/backup_service.dart';
-import '../../export/data/export_service.dart';
-import '../../accounts/providers/account_provider.dart';
-import '../../categories/providers/category_provider.dart';
-import '../../transactions/domain/entities/transaction.dart';
 import '../../../core/widgets/app_widgets.dart';
+import '../../accounts/providers/account_provider.dart';
+import '../../backup/data/backup_service.dart';
+import '../../categories/providers/category_provider.dart';
 import '../../security/data/security_service.dart';
+import '../../spending_allowance/domain/entities/spending_allowance.dart';
+import '../../spending_allowance/providers/spending_allowance_provider.dart';
+import '../../transactions/providers/transaction_provider.dart';
+import 'backup_configuration_screen.dart';
+import 'export_workflow_screen.dart';
 
 class DataToolsScreen extends ConsumerStatefulWidget {
   const DataToolsScreen({super.key});
+
   @override
   ConsumerState<DataToolsScreen> createState() => _DataToolsScreenState();
 }
 
 class _DataToolsScreenState extends ConsumerState<DataToolsScreen> {
-  bool busy = false;
-  String? completedPath;
-  String? operationError;
-  ExportFilter filter = const ExportFilter();
-  Future<void> run(Future<File> Function() work) async {
-    setState(() => busy = true);
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Data Tools')),
+    body: ListView(
+      padding: const EdgeInsets.only(bottom: 24),
+      children: [
+        if (_busy) const LinearProgressIndicator(),
+        FlowlySection(
+          title: 'Export',
+          children: [
+            ListTile(
+              leading: const Icon(Icons.file_present_outlined),
+              title: const Text('Create an export'),
+              subtitle: const Text(
+                'Configure, preview, then choose Save or Share',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _busy
+                  ? null
+                  : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ExportSetupScreen(),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+        FlowlySection(
+          title: 'Backup',
+          children: [
+            ListTile(
+              leading: const Icon(Icons.enhanced_encryption_outlined),
+              title: const Text('Create secure backup'),
+              subtitle: const Text('Encrypted database and settings package'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _busy
+                  ? null
+                  : () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const BackupConfigurationScreen(),
+                      ),
+                    ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.restore_outlined),
+              title: const Text('Restore backup'),
+              subtitle: const Text(
+                'Encrypted .spenflo and legacy .zip backups',
+              ),
+              onTap: _busy ? null : _restore,
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+
+  Future<void> _restore() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['spenflo', 'zip'],
+      withData: true,
+    );
+    if (picked == null || !mounted) return;
+    final selected = picked.files.single;
+    Uint8List bytes;
+    if (selected.bytes != null) {
+      bytes = selected.bytes!;
+    } else if (selected.path != null) {
+      bytes = await File(selected.path!).readAsBytes();
+    } else {
+      _message('The selected file could not be read.');
+      return;
+    }
+
+    final backup = BackupService(AppDatabase.instance);
+    setState(() => _busy = true);
     try {
-      final file = await work();
-      if (mounted) {
-        await SharePlus.instance.share(ShareParams(files: [XFile(file.path)]));
-        if (mounted) setState(() => completedPath = file.path);
+      if (backup.isEncrypted(bytes)) {
+        final password = await _requestPassword();
+        if (password == null) return;
+        bytes = await backup.decryptEncrypted(bytes, password);
+      } else {
+        await backup.validateBytes(bytes);
+        if (!mounted) return;
+        final action = await _legacyAction();
+        if (action == _LegacyAction.cancel) return;
+        if (action == _LegacyAction.convert) {
+          await _convertLegacy(backup, bytes);
+          return;
+        }
       }
-    } catch (e) {
-      if (mounted) setState(() => operationError = '$e');
+      if (!await _reauthenticateIfProtected()) return;
+      if (!mounted) return;
+      final confirmed = await showFlowlyConfirmation(
+        context,
+        title: 'Replace local data?',
+        message:
+            'The validated backup will replace the current local database and supported settings. SpenFlo will roll back if restoration fails.',
+        confirmLabel: 'Restore',
+      );
+      if (!confirmed) return;
+      await backup.restoreBytes(bytes);
+      ref.invalidate(accountListProvider);
+      ref.invalidate(categoryListProvider);
+      ref.invalidate(transactionListProvider);
+      ref.invalidate(currentAllowanceProvider);
+      for (final type in AllowancePeriodType.values) {
+        ref.invalidate(allowanceSummaryProvider(type));
+      }
+      _message('Backup restored successfully.');
+    } catch (error) {
+      _message('Restore failed: $error');
     } finally {
-      if (mounted) setState(() => busy = false);
+      if (mounted) setState(() => _busy = false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final export = ExportService(AppDatabase.instance);
-    final backup = BackupService(AppDatabase.instance);
-    if (completedPath != null || operationError != null) {
-      final success = completedPath != null;
-      return Scaffold(
-        appBar: AppBar(
-          title: Text(success ? 'Export ready' : 'Operation failed'),
-        ),
-        body: AppEmptyState(
-          icon: success
-              ? Icons.check_circle_rounded
-              : Icons.error_outline_rounded,
-          title: success ? 'Your file is ready' : 'We couldn’t finish that',
-          message: success
-              ? 'The file was generated and shared from this device.'
-              : operationError!,
-          actionLabel: success ? 'Done' : 'Try again',
-          onAction: () => setState(() {
-            completedPath = null;
-            operationError = null;
-          }),
-        ),
-      );
-    }
-    return Scaffold(
-      appBar: AppBar(title: const Text('Data Tools')),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: 24),
-        children: [
-          if (busy) const LinearProgressIndicator(),
-          FlowlySection(
-            title: 'Export',
-            children: [
-              ListTile(
-                leading: const Icon(Icons.table_chart_outlined),
-                title: const Text('Export CSV'),
-                subtitle: const Text('Normalized transaction data'),
-                onTap: busy ? null : () => run(() => export.csv(filter)),
+  Future<void> _convertLegacy(
+    BackupService backup,
+    Uint8List legacyBytes,
+  ) async {
+    var password = await showSecurePasswordDialog(
+      context,
+      title: 'Encrypt legacy backup',
+      message:
+          'Create a protected copy without changing your current SpenFlo data.',
+    );
+    if (password == null) return;
+    final encrypted = await backup.encryptLegacy(legacyBytes, password);
+    password = null;
+    final result = await FilePicker.platform.saveFile(
+      dialogTitle: 'Save encrypted backup copy',
+      fileName: 'spenflo-converted-backup.spenflo',
+      type: FileType.custom,
+      allowedExtensions: const ['spenflo'],
+      bytes: encrypted,
+    );
+    if (!mounted) return;
+    _message(
+      result == null
+          ? 'Conversion save cancelled. Your data was not changed.'
+          : 'Encrypted backup copy saved. Your data was not changed.',
+    );
+  }
+
+  Future<_LegacyAction> _legacyAction() async {
+    return await showDialog<_LegacyAction>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            icon: const Icon(Icons.warning_amber_rounded),
+            title: const Text('Unencrypted legacy backup'),
+            content: const Text(
+              'This older ZIP backup is readable without a password. You can restore it or save a new encrypted copy without changing current data.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _LegacyAction.cancel),
+                child: const Text('Cancel'),
               ),
-              ListTile(
-                leading: const Icon(Icons.grid_on_outlined),
-                title: const Text('Export Excel workbook'),
-                subtitle: const Text(
-                  'Summary, transactions, accounts, categories, budgets and goals',
-                ),
-                onTap: busy ? null : () => run(() => export.xlsx(filter)),
+              TextButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _LegacyAction.convert),
+                child: const Text('Encrypt copy'),
               ),
-              ListTile(
-                leading: const Icon(Icons.picture_as_pdf_outlined),
-                title: const Text('Export PDF report'),
-                subtitle: const Text('Financial summary and transactions'),
-                onTap: busy ? null : () => run(() => export.pdf(filter)),
-              ),
-              ListTile(
-                leading: const Icon(Icons.filter_alt_outlined),
-                title: const Text('Export filters'),
-                subtitle: Text(_filterSummary()),
-                onTap: busy ? null : _editFilter,
+              FilledButton(
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _LegacyAction.restore),
+                child: const Text('Restore'),
               ),
             ],
           ),
-          FlowlySection(
-            title: 'Backup',
-            children: [
-              ListTile(
-                leading: const Icon(Icons.backup_outlined),
-                title: const Text('Create backup'),
-                subtitle: const Text(
-                  'Versioned local database and settings archive',
-                ),
-                onTap: busy ? null : () => run(backup.create),
+        ) ??
+        _LegacyAction.cancel;
+  }
+
+  Future<String?> _requestPassword() async {
+    final controller = TextEditingController();
+    var obscure = true;
+    final value = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: const Text('Unlock backup'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            obscureText: obscure,
+            decoration: InputDecoration(
+              labelText: 'Backup password',
+              suffixIcon: IconButton(
+                onPressed: () => update(() => obscure = !obscure),
+                icon: Icon(obscure ? Icons.visibility : Icons.visibility_off),
               ),
-              ListTile(
-                leading: const Icon(Icons.restore_outlined),
-                title: const Text('Restore backup'),
-                subtitle: const Text(
-                  'Choose a .zip backup to validate and restore',
-                ),
-                onTap: busy
-                    ? null
-                    : () async {
-                        final result = await FilePicker.platform.pickFiles(
-                          type: FileType.custom,
-                          allowedExtensions: ['zip'],
-                        );
-                        final path = result?.files.single.path;
-                        if (path == null) return;
-                        final confirmed = await showFlowlyConfirmation(
-                          context,
-                          title: 'Restore this backup?',
-                          message: 'SpenFlo validates the selected archive first. Restoring replaces local financial data and saved settings.',
-                          confirmLabel: 'Restore',
-                        );
-                        if (!confirmed || !mounted) return;
-                        if (!await _reauthenticateIfProtected()) return;
-                        setState(() => busy = true);
-                        try {
-                          await backup.restore(File(path));
-                          if (!mounted) return;
-                          ref.invalidate(accountListProvider);
-                          ref.invalidate(categoryListProvider);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Backup restored. Return to a screen to reload its restored data.',
-                              ),
-                            ),
-                          );
-                        } catch (e) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context)
-                              .showSnackBar(SnackBar(content: Text('$e')));
-                        } finally {
-                          if (mounted) setState(() => busy = false);
-                        }
-                      },
-              ),
-            ],
+            ),
           ),
-        ],
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: const Text('Unlock'),
+            ),
+          ],
+        ),
       ),
     );
+    controller.clear();
+    controller.dispose();
+    return value;
   }
 
   Future<bool> _reauthenticateIfProtected() async {
     final security = SecurityService();
     if (!await security.enabled) return true;
     if (!mounted) return false;
-
     final controller = TextEditingController();
     final pin = await showDialog<String>(
       context: context,
@@ -196,157 +274,18 @@ class _DataToolsScreenState extends ConsumerState<DataToolsScreen> {
         ],
       ),
     );
+    controller.clear();
     controller.dispose();
     if (pin == null) return false;
     final valid = await security.verifyPin(pin);
-    if (!valid && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('PIN verification failed.')));
-    }
+    if (!valid) _message('PIN verification failed.');
     return valid;
   }
 
-  String _filterSummary() {
-    final selected = <String>[];
-    if (filter.start != null) selected.add('date range');
-    if (filter.accountId != null) selected.add('account');
-    if (filter.category != null) selected.add('category');
-    if (filter.type != null) selected.add(filter.type!.name);
-    return selected.isEmpty ? 'All transactions' : selected.join(' • ');
-  }
-
-  Future<void> _editFilter() async {
-    final accounts = ref.read(accountListProvider).valueOrNull ?? const [];
-    final categories = ref.read(categoryListProvider).valueOrNull ?? const [];
-    var start = filter.start;
-    var end = filter.end;
-    var account = filter.accountId;
-    var category = filter.category;
-    var type = filter.type;
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (sheet) => StatefulBuilder(
-        builder: (context, update) => SafeArea(
-          child: Padding(
-            padding: EdgeInsets.fromLTRB(
-              20,
-              20,
-              20,
-              MediaQuery.viewInsetsOf(context).bottom + 20,
-            ),
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                Text(
-                  'Export filters',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                ListTile(
-                  title: const Text('Date range'),
-                  subtitle: Text(
-                    start == null
-                        ? 'All dates'
-                        : '${start!.toLocal().toString().split(' ').first} – ${end!.toLocal().toString().split(' ').first}',
-                  ),
-                  onTap: () async {
-                    final dates = await showDateRangePicker(
-                      context: context,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime.now(),
-                      initialDateRange: start == null
-                          ? null
-                          : DateTimeRange(start: start!, end: end ?? start!),
-                    );
-                    if (dates != null) {
-                      update(() {
-                        start = dates.start;
-                        end = dates.end;
-                      });
-                    }
-                  },
-                ),
-                DropdownButtonFormField<int>(
-                  initialValue: account,
-                  decoration: const InputDecoration(labelText: 'Account'),
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text('All accounts'),
-                    ),
-                    ...accounts.map(
-                      (a) => DropdownMenuItem(value: a.id, child: Text(a.name)),
-                    ),
-                  ],
-                  onChanged: (value) => update(() => account = value),
-                ),
-                DropdownButtonFormField<String>(
-                  initialValue: category,
-                  decoration: const InputDecoration(labelText: 'Category'),
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text('All categories'),
-                    ),
-                    ...categories.map(
-                      (c) =>
-                          DropdownMenuItem(value: c.name, child: Text(c.name)),
-                    ),
-                  ],
-                  onChanged: (value) => update(() => category = value),
-                ),
-                DropdownButtonFormField<TransactionType>(
-                  initialValue: type,
-                  decoration: const InputDecoration(
-                    labelText: 'Transaction type',
-                  ),
-                  items: [
-                    const DropdownMenuItem(
-                      value: null,
-                      child: Text('All types'),
-                    ),
-                    ...TransactionType.values.map(
-                      (v) => DropdownMenuItem(value: v, child: Text(v.name)),
-                    ),
-                  ],
-                  onChanged: (value) => update(() => type = value),
-                ),
-                Row(
-                  children: [
-                    TextButton(
-                      onPressed: () => update(() {
-                        start = null;
-                        end = null;
-                        account = null;
-                        category = null;
-                        type = null;
-                      }),
-                      child: const Text('Clear'),
-                    ),
-                    const Spacer(),
-                    FilledButton(
-                      onPressed: () {
-                        setState(
-                          () => filter = ExportFilter(
-                            start: start,
-                            end: end,
-                            accountId: account,
-                            category: category,
-                            type: type,
-                          ),
-                        );
-                        Navigator.pop(sheet);
-                      },
-                      child: const Text('Apply'),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  void _message(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 }
+
+enum _LegacyAction { cancel, convert, restore }

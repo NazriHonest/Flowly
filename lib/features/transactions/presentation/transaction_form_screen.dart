@@ -402,8 +402,9 @@ class _TransactionFormScreenState extends ConsumerState<TransactionFormScreen> {
                         ? null
                         : (value) => setState(() {
                             _accountId = value;
-                            if (_destinationAccountId == value)
+                            if (_destinationAccountId == value) {
                               _destinationAccountId = null;
+                            }
                           }),
                     validator: (value) =>
                         value == null ? 'Create or choose an account' : null,

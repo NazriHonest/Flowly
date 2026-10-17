@@ -22,6 +22,7 @@ import '../../features/transactions/domain/services/transfer_reconciliation_serv
 import 'migrations/migration_runner.dart';
 
 class AppDatabase {
+  static const schemaVersion = 19;
   AppDatabase._({this.databasePathOverride});
   static final instance = AppDatabase._();
   factory AppDatabase.forTesting(String databasePath) =>
@@ -47,7 +48,7 @@ class AppDatabase {
 
   Future<Database> get db async => _database ??= await openDatabase(
     await databasePath,
-    version: 18,
+    version: schemaVersion,
     onConfigure: (database) => database.execute('PRAGMA foreign_keys = ON'),
     onCreate: (database, _) => _migrations.create(database),
     onUpgrade: (database, oldVersion, _) =>
@@ -61,25 +62,26 @@ class AppDatabase {
       )
       .then((rows) => rows.map(_transaction).toList());
 
-  Future<List<Account>> accounts() async => (await db)
-      .query('accounts', where: 'is_archived=0')
-      .then(
-        (rows) => rows
-            .map(
-              (m) => Account(
-                id: m['id'] as int,
-                name: m['name'] as String,
-                openingBalanceMinor: m['opening_balance'] as int,
-                color: m['color'] as int,
-                icon: m['icon'] as int? ?? 0xe850,
-                type: m['type'] as String,
-                currency: m['currency'] as String,
-                providerId: m['provider_id'] as int?,
-                archived: (m['is_archived'] as int) == 1,
-              ),
-            )
-            .toList(),
-      );
+  Future<List<Account>> accounts({bool includeArchived = false}) async =>
+      (await db)
+          .query('accounts', where: includeArchived ? null : 'is_archived=0')
+          .then(
+            (rows) => rows
+                .map(
+                  (m) => Account(
+                    id: m['id'] as int,
+                    name: m['name'] as String,
+                    openingBalanceMinor: m['opening_balance'] as int,
+                    color: m['color'] as int,
+                    icon: m['icon'] as int? ?? 0xe850,
+                    type: m['type'] as String,
+                    currency: m['currency'] as String,
+                    providerId: m['provider_id'] as int?,
+                    archived: (m['is_archived'] as int) == 1,
+                  ),
+                )
+                .toList(),
+          );
 
   Future<List<Budget>> budgets() async => (await db)
       .query('budgets', where: 'is_archived=0')

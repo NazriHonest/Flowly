@@ -12,6 +12,7 @@ import 'transaction_filters_screen.dart';
 import 'transaction_form_screen.dart';
 import 'transaction_presentation.dart';
 import 'widgets/transaction_card.dart';
+import 'widgets/transaction_date_selector.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen
@@ -39,6 +40,8 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   TransactionFilterState _filters = const TransactionFilterState();
   bool _showSearch = false;
   final _searchController = TextEditingController();
+  late DateTime _displayedMonth;
+  DateTime? _selectedDay;
 
   @override
   void initState() {
@@ -57,6 +60,16 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       _searchController.text = widget.initialMerchant!;
       _showSearch = true;
     }
+    final initialRange = widget.initialDateRange;
+    _selectedDay = initialRange != null &&
+            _isSameCalendarDay(initialRange.start, initialRange.end)
+        ? _dateOnly(initialRange.start)
+        : null;
+    final initialMonth = _selectedDay ?? DateTime.now();
+    _displayedMonth = DateTime(initialMonth.year, initialMonth.month);
+    if (_selectedDay != null) {
+      _filters = _filters.copyWith(dateRangePreset: () => 'day');
+    }
   }
 
   @override
@@ -70,6 +83,7 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
   List<Transaction> _applyFilters(
     List<Transaction> items,
     List<dynamic> accounts,
+    {bool includeDate = true,}
   ) {
     final term = _searchController.text.toLowerCase().trim();
     return items.where((item) {
@@ -98,17 +112,15 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       if (_filters.source != null && item.source != _filters.source) {
         return false;
       }
-      if (_filters.dateRange != null) {
-        final start = _filters.dateRange!.start;
-        final end = DateTime(
-          _filters.dateRange!.end.year,
-          _filters.dateRange!.end.month,
-          _filters.dateRange!.end.day,
-          23,
-          59,
-          59,
-        );
-        if (item.date.isBefore(start) || item.date.isAfter(end)) return false;
+      if (includeDate && _filters.dateRange != null) {
+        final start = _dateOnly(_filters.dateRange!.start);
+        final rawEnd = _dateOnly(_filters.dateRange!.end);
+        final endExclusive = DateTime(rawEnd.year, rawEnd.month, rawEnd.day + 1);
+        final transactionDate = item.date.toLocal();
+        if (transactionDate.isBefore(start) ||
+            !transactionDate.isBefore(endExclusive)) {
+          return false;
+        }
       }
       if (_filters.minimumAmount != null &&
           item.amountMinor < _filters.minimumAmount!) {
@@ -131,7 +143,23 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
           ),
         );
     if (result != null && mounted) {
-      setState(() => _filters = result);
+      setState(() {
+        _filters = result;
+        _selectedDay = result.dateRangePreset != 'custom' &&
+                result.dateRange != null &&
+                _isSameCalendarDay(
+                  result.dateRange!.start,
+                  result.dateRange!.end,
+                )
+            ? _dateOnly(result.dateRange!.start)
+            : null;
+        if (_selectedDay != null) {
+          _displayedMonth = DateTime(
+            _selectedDay!.year,
+            _selectedDay!.month,
+          );
+        }
+      });
     }
   }
 
@@ -149,12 +177,73 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
             _buildHeader(context),
             if (_showSearch) _buildSearchBar(context),
             _buildTypePills(context),
-            const SizedBox(height: 4),
+            _buildDateSelector(context, state, accounts),
             Expanded(child: _buildBody(context, state, accounts)),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildDateSelector(
+    BuildContext context,
+    AsyncValue<List<Transaction>> state,
+    List<dynamic> accounts,
+  ) {
+    final relevantItems = _applyFilters(
+      state.valueOrNull ?? const <Transaction>[],
+      accounts,
+      includeDate: false,
+    );
+    final transactionDays = relevantItems
+        .map((item) => _dateOnly(item.date.toLocal()))
+        .toSet();
+    final range = _filters.dateRange;
+    final customRangeLabel = range != null && _selectedDay == null
+        ? '${DateFormat('MMM d, y').format(range.start)} - ${DateFormat('MMM d, y').format(range.end)}'
+        : null;
+    return TransactionDateSelector(
+      displayedMonth: _displayedMonth,
+      selectedDay: _selectedDay,
+      allSelected: range == null,
+      transactionDays: transactionDays,
+      activeRangeLabel: customRangeLabel,
+      onAllSelected: _showAllDates,
+      onDaySelected: _selectDay,
+      onPreviousMonth: () => setState(() {
+        _displayedMonth = DateTime(
+          _displayedMonth.year,
+          _displayedMonth.month - 1,
+        );
+      }),
+      onNextMonth: () => setState(() {
+        _displayedMonth = DateTime(
+          _displayedMonth.year,
+          _displayedMonth.month + 1,
+        );
+      }),
+    );
+  }
+
+  void _selectDay(DateTime day) {
+    final localDay = _dateOnly(day);
+    setState(() {
+      _selectedDay = localDay;
+      _filters = _filters.copyWith(
+        dateRange: () => DateTimeRange(start: localDay, end: localDay),
+        dateRangePreset: () => 'day',
+      );
+    });
+  }
+
+  void _showAllDates() {
+    setState(() {
+      _selectedDay = null;
+      _filters = _filters.copyWith(
+        dateRange: () => null,
+        dateRangePreset: () => null,
+      );
+    });
   }
 
   Widget _buildHeader(BuildContext context) {
@@ -339,24 +428,28 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
                   height: MediaQuery.sizeOf(context).height * .62,
                   child: AppEmptyState(
                     icon: Icons.receipt_long_outlined,
-                    title:
-                        _searchController.text.isNotEmpty ||
-                            _activeFilterCount > 0
+                    title: _selectedDay != null
+                        ? 'No transactions on this day'
+                        : _searchController.text.isNotEmpty ||
+                              _activeFilterCount > 0
                         ? 'No matches found'
                         : 'No transactions yet.',
-                    message:
-                        _searchController.text.isNotEmpty ||
-                            _activeFilterCount > 0
+                    message: _selectedDay != null
+                        ? 'No transactions were recorded for the selected date.'
+                        : _searchController.text.isNotEmpty ||
+                              _activeFilterCount > 0
                         ? 'Try adjusting your search or filters.'
                         : 'Add one manually, or turn on automatic detection.',
-                    actionLabel:
-                        _searchController.text.isEmpty &&
-                            _activeFilterCount == 0
+                    actionLabel: _selectedDay != null
+                        ? 'Show All Dates'
+                        : _searchController.text.isEmpty &&
+                              _activeFilterCount == 0
                         ? 'Add transaction'
                         : null,
-                    onAction:
-                        _searchController.text.isEmpty &&
-                            _activeFilterCount == 0
+                    onAction: _selectedDay != null
+                        ? _showAllDates
+                        : _searchController.text.isEmpty &&
+                              _activeFilterCount == 0
                         ? () => Navigator.push(
                             context,
                             MaterialPageRoute(
@@ -449,4 +542,17 @@ class _TransactionsScreenState extends ConsumerState<TransactionsScreen> {
       ],
     );
   }
+}
+
+DateTime _dateOnly(DateTime value) {
+  final local = value.toLocal();
+  return DateTime(local.year, local.month, local.day);
+}
+
+bool _isSameCalendarDay(DateTime first, DateTime second) {
+  final firstLocal = first.toLocal();
+  final secondLocal = second.toLocal();
+  return firstLocal.year == secondLocal.year &&
+      firstLocal.month == secondLocal.month &&
+      firstLocal.day == secondLocal.day;
 }

@@ -19,6 +19,7 @@ import 'migration_v15.dart';
 import 'migration_v16.dart';
 import 'migration_v17.dart';
 import 'migration_v18.dart';
+import 'migration_v19.dart';
 
 class MigrationRunner {
   const MigrationRunner();
@@ -41,6 +42,7 @@ class MigrationRunner {
     MigrationV16(),
     MigrationV17(),
     MigrationV18(),
+    MigrationV19(),
   ];
   Future<void> run(Database database, {required int from}) async {
     for (final migration in migrations.where((m) => m.version > from)) {

@@ -6,8 +6,8 @@ import '../../sms_detection/presentation/sms_permission_education_screen.dart';
 import 'data_tools_screen.dart';
 import '../../security/presentation/security_screen.dart';
 import '../../notifications/presentation/notification_preferences_screen.dart';
-import '../../sms_detection/presentation/historical_import_screen.dart';
-import '../../sms_detection/presentation/provider_management_screen.dart';
+import '../../screenshot/presentation/ui_testing_tools_screen.dart';
+import '../../screenshot/providers/screenshot_provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -22,7 +22,7 @@ class SettingsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: ListView(
-        padding: const EdgeInsets.only(bottom: 48),
+        padding: const EdgeInsets.only(bottom: 52),
         children: [
           FlowlySection(
             title: 'General',
@@ -56,30 +56,6 @@ class SettingsScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              const Divider(height: 1),
-              _SettingsTile(
-                icon: Icons.account_tree_outlined,
-                title: 'SMS providers',
-                subtitle: 'Providers and account mappings',
-                onTap: () => Navigator.push(
-                  c,
-                  MaterialPageRoute(
-                    builder: (_) => const ProviderManagementScreen(),
-                  ),
-                ),
-              ),
-              const Divider(height: 1),
-              _SettingsTile(
-                icon: Icons.download_for_offline_outlined,
-                title: 'Historical import',
-                subtitle: 'Review supported past messages',
-                onTap: () => Navigator.push(
-                  c,
-                  MaterialPageRoute(
-                    builder: (_) => const HistoricalImportScreen(),
-                  ),
-                ),
-              ),
             ],
           ),
           FlowlySection(
@@ -101,10 +77,27 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.lock_outline,
                 title: 'Security',
                 subtitle: 'PIN, biometrics and lock timeout',
-                onTap: () => Navigator.push(
-                  c,
-                  MaterialPageRoute(builder: (_) => const SecurityScreen()),
-                ),
+                onTap: () async {
+                  final protected = await r
+                      .read(screenshotControllerProvider.notifier)
+                      .disable(ScreenshotDisableReason.protectedScreen);
+                  if (!protected) {
+                    if (c.mounted) {
+                      ScaffoldMessenger.of(c).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not restore screenshot protection.'),
+                        ),
+                      );
+                    }
+                    return;
+                  }
+                  if (c.mounted) {
+                    Navigator.push(
+                      c,
+                      MaterialPageRoute(builder: (_) => const SecurityScreen()),
+                    );
+                  }
+                },
               ),
             ],
           ),
@@ -116,9 +109,42 @@ class SettingsScreen extends ConsumerWidget {
                 icon: Icons.storage_outlined,
                 title: 'Data tools',
                 subtitle: 'Export, backup and restore your data',
+                onTap: () async {
+                  final protected = await r
+                      .read(screenshotControllerProvider.notifier)
+                      .disable(ScreenshotDisableReason.protectedScreen);
+                  if (!protected) {
+                    if (c.mounted) {
+                      ScaffoldMessenger.of(c).showSnackBar(
+                        const SnackBar(
+                          content: Text('Could not restore screenshot protection.'),
+                        ),
+                      );
+                    }
+                    return;
+                  }
+                  if (c.mounted) {
+                    Navigator.push(
+                      c,
+                      MaterialPageRoute(builder: (_) => const DataToolsScreen()),
+                    );
+                  }
+                },
+              ),
+            ],
+          ),
+          FlowlySection(
+            title: 'Developer',
+            children: [
+              _SettingsTile(
+                icon: Icons.developer_mode_outlined,
+                title: 'UI Testing Tools',
+                subtitle: 'Temporarily allow native Android screenshots',
                 onTap: () => Navigator.push(
                   c,
-                  MaterialPageRoute(builder: (_) => const DataToolsScreen()),
+                  MaterialPageRoute(
+                    builder: (_) => const UiTestingToolsScreen(),
+                  ),
                 ),
               ),
             ],
@@ -135,16 +161,16 @@ class SettingsScreen extends ConsumerWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: ['USD', 'SOS']
-              .map(
-                (code) => ListTile(
-                  title: Text(code),
-                  trailing: code == MoneyFormatter.currencyCode
-                      ? const Icon(Icons.check)
-                      : null,
-                  onTap: () => Navigator.pop(sheet, code),
-                ),
-              )
-              .toList(),
+            .map(
+              (code) => ListTile(
+                title: Text(code),
+                trailing: code == MoneyFormatter.currencyCode
+                    ? const Icon(Icons.check)
+                    : null,
+                onTap: () => Navigator.pop(sheet, code),
+              ),
+            )
+            .toList(),
         ),
       ),
     );

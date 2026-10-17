@@ -275,6 +275,17 @@ class _TransactionFiltersScreenState
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
+                if (_dateRangePreset == 'day' && _dateRange != null) ...[
+                  _buildThemeChip(
+                    'Selected day',
+                    true,
+                    () => setState(() {
+                      _dateRangePreset = null;
+                      _dateRange = null;
+                    }),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 _buildThemeChip('Today', _dateRangePreset == 'today', () {
                   final now = DateTime.now();
                   setState(() {

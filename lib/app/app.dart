@@ -13,6 +13,9 @@ import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/security/data/security_service.dart';
 import '../features/security/presentation/lock_screen.dart';
 import '../features/accounts/presentation/balance_privacy.dart';
+import '../features/spending_allowance/domain/entities/spending_allowance.dart';
+import '../features/spending_allowance/providers/spending_allowance_provider.dart';
+import '../features/screenshot/providers/screenshot_provider.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -53,11 +56,17 @@ class _FlowlyAppState extends ConsumerState<FlowlyApp>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) {
+    debugPrint('SpenFloScreenshot: app_lifecycle state=${state.name}');
+    final backgrounded = state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached;
+    if (backgrounded) {
       ref.read(balanceVisibilityProvider.notifier).hide();
+      ref
+          .read(screenshotControllerProvider.notifier)
+          .disable(ScreenshotDisableReason.appBackgrounded);
     }
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
+    if (backgrounded) {
       backgroundedAt ??= DateTime.now();
       return;
     }
@@ -66,6 +75,10 @@ class _FlowlyAppState extends ConsumerState<FlowlyApp>
 
   Future<void> _handleResume() async {
     await _evaluateResumeLock();
+    ref.invalidate(currentAllowanceProvider);
+    for (final type in AllowancePeriodType.values) {
+      ref.invalidate(allowanceSummaryProvider(type));
+    }
     final enabled = await ref
         .read(automaticDetectionProvider.notifier)
         .reconcileOnResume();
@@ -81,6 +94,9 @@ class _FlowlyAppState extends ConsumerState<FlowlyApp>
     final timeout = await security.timeoutMinutes();
     if (timeout == 0 ||
         DateTime.now().difference(started).inMinutes >= timeout) {
+      await ref
+          .read(screenshotControllerProvider.notifier)
+          .disable(ScreenshotDisableReason.appLocked);
       if (mounted) setState(() => locked = true);
     }
   }

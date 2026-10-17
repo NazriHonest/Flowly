@@ -6,6 +6,7 @@ import '../data/datasources/transaction_local_datasource.dart';
 import '../data/repositories/transaction_repository_impl.dart';
 import '../../../core/database/app_database.dart';
 import '../../notifications/data/budget_notification_evaluator.dart';
+import '../../spending_allowance/data/spending_allowance_notification_evaluator.dart';
 
 final transactionRepositoryProvider = Provider<TransactionRepository>(
   (_) => TransactionRepositoryImpl(
@@ -24,9 +25,15 @@ class TransactionController
   }
 
   Future<void> save(Transaction t) async {
+    final previous = t.id == null
+        ? null
+        : state.valueOrNull?.where((item) => item.id == t.id).firstOrNull;
     await _repository.save(t);
     await refresh();
     await BudgetNotificationEvaluator(AppDatabase.instance).evaluate();
+    await SpendingAllowanceNotificationEvaluator(
+      AppDatabase.instance,
+    ).evaluateLive(t, previous: previous);
   }
 
   Future<void> delete(int id) async {

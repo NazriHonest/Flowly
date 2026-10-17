@@ -12,6 +12,7 @@ import '../domain/services/confidence_calculator.dart';
 import '../domain/services/financial_sms_pipeline.dart';
 import 'sms_event_bridge.dart';
 import '../../notifications/data/local_notification_service.dart';
+import '../../spending_allowance/data/spending_allowance_notification_evaluator.dart';
 
 /// Constructs the normalized transaction persisted for an SMS broadcast.
 /// Keeping the source assignment here makes it independently regression-testable.
@@ -185,21 +186,27 @@ class AutomaticTransactionProcessor {
       final status = result.disposition == DetectionDisposition.confirmed
           ? ReviewStatus.confirmed
           : ReviewStatus.needsReview;
-      final saved = await _database.saveDetectedTransaction(
-        createLiveSmsTransaction(
+      final transaction = createLiveSmsTransaction(
           candidate: candidate,
           merchant: merchant,
           category: category,
           accountId: accountId,
           status: status,
           smsReceivedAt: event.receivedAt,
-        ),
+        );
+      final saved = await _database.saveDetectedTransaction(
+        transaction,
         result.fingerprint,
       );
       developer.log('persistence_success=$saved', name: 'FlowlySMS');
       if (!saved) {
         developer.log('duplicate', name: 'FlowlySMS');
         return const SmsProcessingOutcome(SmsProcessingDisposition.duplicate);
+      }
+      if (status == ReviewStatus.confirmed) {
+        await _bestEffort(
+          () => SpendingAllowanceNotificationEvaluator(_database).evaluateLive(transaction),
+        );
       }
       if (status == ReviewStatus.needsReview) {
         await _bestEffort(
